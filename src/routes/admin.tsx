@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useAuth, getAdminEmails, setAdminEmails } from "@/lib/auth-context";
+import { useAuth, setAdminEmails } from "@/lib/auth-context";
 import { useProducts, type Concern, type ProductItem } from "@/hooks/use-products";
 import { useOrders, type OrderStatus } from "@/hooks/use-orders";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -30,30 +30,30 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, logout, adminEmails } = useAuth();
   const { products, addProduct, updateProduct, deleteProduct } = useProducts();
   const { orders, updateOrderStatus, deleteOrder } = useOrders();
 
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "settings">("overview");
 
-  // Admin Whitelist Management
-  const [adminEmails, setAdminEmailsState] = useState<string[]>(() => getAdminEmails());
+  // Admin Whitelist Management — list comes from Firestore via AuthContext
   const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [adminSaving, setAdminSaving] = useState(false);
 
-  const handleAddAdminEmail = () => {
+  const handleAddAdminEmail = async () => {
     const email = newAdminEmail.toLowerCase().trim();
     if (!email || !email.includes("@")) return;
     if (adminEmails.includes(email)) { setNewAdminEmail(""); return; }
-    const updated = [...adminEmails, email];
-    setAdminEmailsState(updated);
-    setAdminEmails(updated);
+    setAdminSaving(true);
+    await setAdminEmails([...adminEmails, email]);
+    setAdminSaving(false);
     setNewAdminEmail("");
   };
 
-  const handleRemoveAdminEmail = (email: string) => {
-    const updated = adminEmails.filter((e) => e !== email);
-    setAdminEmailsState(updated);
-    setAdminEmails(updated);
+  const handleRemoveAdminEmail = async (email: string) => {
+    setAdminSaving(true);
+    await setAdminEmails(adminEmails.filter((e) => e !== email));
+    setAdminSaving(false);
   };
 
   // Product Form Modal state

@@ -53,7 +53,7 @@ function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      if (user.email?.toLowerCase().includes("admin")) {
+      if (user.role === "admin") {
         navigate({ to: "/admin" });
       } else {
         navigate({ to: "/" });
@@ -74,11 +74,7 @@ function LoginPage() {
         toast.success("Welcome back to your sanctuary.");
       }
       
-      if (email.toLowerCase().includes("admin")) {
-        navigate({ to: "/admin" });
-      } else {
-        navigate({ to: "/" });
-      }
+      // Navigation handled by the useEffect above when user state updates
     } catch (err: unknown) {
       toast.error(getFriendlyErrorMessage(err));
     } finally {
@@ -90,17 +86,16 @@ function LoginPage() {
     try {
       await loginWithGoogle(rememberMe);
       toast.success("Signed in successfully via Google.");
-      navigate({ to: "/" });
+      // Navigation handled by useEffect based on user role
     } catch (err: unknown) {
       toast.error(getFriendlyErrorMessage(err));
     }
   };
-
   const handleFacebook = async () => {
     try {
       await loginWithFacebook(rememberMe);
       toast.success("Signed in successfully via Facebook.");
-      navigate({ to: "/" });
+      // Navigation handled by useEffect based on user role
     } catch (err: unknown) {
       toast.error(getFriendlyErrorMessage(err));
     }
