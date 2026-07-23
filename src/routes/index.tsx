@@ -1,5 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { useProducts, type ProductItem } from "@/hooks/use-products";
+import { useOrders } from "@/hooks/use-orders";
 import painOilAsset from "@/assets/pain-oil.asset.json";
 import hairOilBoxAsset from "@/assets/hair-oil-box.asset.json";
 import lifestyleHairAsset from "@/assets/lifestyle-hair.asset.json";
@@ -49,9 +53,58 @@ function parsePrice(price: string) {
   return Number(price.replace(/[^\d.]/g, "")) || 0;
 }
 
+function animateFlyToCart(imgSrc: string, startEl: HTMLElement) {
+  const target = document.getElementById("cart-btn-desktop");
+  if (!target || !startEl) return;
+
+  const startRect = startEl.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+
+  // Create absolute floating image overlay
+  const img = document.createElement("img");
+  img.src = imgSrc;
+  img.style.position = "fixed";
+  img.style.left = `${startRect.left + startRect.width / 2}px`;
+  img.style.top = `${startRect.top + startRect.height / 2}px`;
+  img.style.width = "64px";
+  img.style.height = "64px";
+  img.style.borderRadius = "50%";
+  img.style.objectFit = "cover";
+  img.style.zIndex = "99999";
+  img.style.pointerEvents = "none";
+  img.style.transform = "translate(-50%, -50%) scale(1)";
+  img.style.transition = "all 0.9s cubic-bezier(0.25, 1, 0.5, 1)";
+  img.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.25)";
+  img.style.border = "2px solid #cfa860";
+
+  document.body.appendChild(img);
+
+  // Force reflow to register initial styles
+  img.offsetWidth;
+
+  // Move and scale down to target
+  img.style.left = `${targetRect.left + targetRect.width / 2}px`;
+  img.style.top = `${targetRect.top + targetRect.height / 2}px`;
+  img.style.transform = "translate(-50%, -50%) scale(0.15)";
+  img.style.opacity = "0.2";
+
+  img.addEventListener("transitionend", () => {
+    img.remove();
+    // Play bounce animation on target
+    target.classList.add("animate-cart-bounce");
+    setTimeout(() => {
+      target.classList.remove("animate-cart-bounce");
+    }, 450);
+  });
+}
+
 const CartContext = createContext<{
   items: CartItem[];
-  addItem: (p: { name: string; price: string; img: string }) => void;
+  addItem: (
+    p: { name: string; price: string; img: string },
+    clickEvent?: React.MouseEvent<HTMLElement>,
+    openCartAfter?: boolean
+  ) => void;
   removeItem: (name: string) => void;
   setQty: (name: string, qty: number) => void;
   isOpen: boolean;
@@ -59,6 +112,14 @@ const CartContext = createContext<{
   closeCart: () => void;
   count: number;
   subtotal: number;
+  wishlist: CartItem[];
+  toggleWishlist: (p: { name: string; price: string; img: string }) => void;
+  isWishlistOpen: boolean;
+  openWishlist: () => void;
+  closeWishlist: () => void;
+  isQuizOpen: boolean;
+  openQuiz: () => void;
+  closeQuiz: () => void;
 }>({
   items: [],
   addItem: () => { },
@@ -69,6 +130,14 @@ const CartContext = createContext<{
   closeCart: () => { },
   count: 0,
   subtotal: 0,
+  wishlist: [],
+  toggleWishlist: () => { },
+  isWishlistOpen: false,
+  openWishlist: () => { },
+  closeWishlist: () => { },
+  isQuizOpen: false,
+  openQuiz: () => { },
+  closeQuiz: () => { },
 });
 
 function Index() {
@@ -76,20 +145,48 @@ function Index() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isCartOpen, setCartOpen] = useState(false);
   const [isSearchOpen, setSearchOpen] = useState(false);
+  const [wishlist, setWishlist] = useState<CartItem[]>([]);
+  const [isWishlistOpen, setWishlistOpen] = useState(false);
+  const [isQuizOpen, setQuizOpen] = useState(false);
 
-  function addItem(p: { name: string; price: string; img: string }) {
+  function addItem(
+    p: { name: string; price: string; img: string },
+    clickEvent?: React.MouseEvent<HTMLElement>,
+    openCartAfter: boolean = false
+  ) {
     setItems((prev) => {
       const existing = prev.find((i) => i.name === p.name);
       if (existing) return prev.map((i) => (i.name === p.name ? { ...i, qty: i.qty + 1 } : i));
       return [...prev, { ...p, qty: 1 }];
     });
-    setCartOpen(true);
+    if (clickEvent) {
+      animateFlyToCart(p.img, clickEvent.currentTarget);
+      if (openCartAfter) {
+        setTimeout(() => {
+          setCartOpen(true);
+        }, 950);
+      }
+    } else if (openCartAfter) {
+      setCartOpen(true);
+    }
   }
   function removeItem(name: string) {
     setItems((prev) => prev.filter((i) => i.name !== name));
   }
   function setQty(name: string, qty: number) {
     setItems((prev) => prev.map((i) => (i.name === name ? { ...i, qty: Math.max(1, qty) } : i)));
+  }
+  function toggleWishlist(p: { name: string; price: string; img: string }) {
+    setWishlist((prev) => {
+      const existing = prev.find((item) => item.name === p.name);
+      if (existing) {
+        toast.success(`Removed "${p.name}" from your wishlist.`);
+        return prev.filter((item) => item.name !== p.name);
+      } else {
+        toast.success(`Added "${p.name}" to your wishlist.`);
+        return [...prev, { name: p.name, price: p.price, img: p.img, qty: 1 }];
+      }
+    });
   }
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + parsePrice(i.price) * i.qty, 0);
@@ -107,6 +204,14 @@ function Index() {
           closeCart: () => setCartOpen(false),
           count,
           subtotal,
+          wishlist,
+          toggleWishlist,
+          isWishlistOpen,
+          openWishlist: () => setWishlistOpen(true),
+          closeWishlist: () => setWishlistOpen(false),
+          isQuizOpen,
+          openQuiz: () => setQuizOpen(true),
+          closeQuiz: () => setQuizOpen(false),
         }}
       >
         <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -138,6 +243,9 @@ function Index() {
           <Footer />
         </div>
         <CartDrawer />
+        <WishlistDrawer />
+        <DoshaQuizModal />
+        <WhatsAppFloat />
         <SearchOverlay open={isSearchOpen} onClose={() => setSearchOpen(false)} />
       </CartContext.Provider>
     </ConcernContext.Provider>
@@ -147,8 +255,10 @@ function Index() {
 /* ---------------- NAVBAR ---------------- */
 function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
   const { setConcern } = useContext(ConcernContext);
-  const { count, openCart } = useContext(CartContext);
+  const { count, openCart, wishlist, openWishlist } = useContext(CartContext);
+  const { user, logout } = useAuth();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isProfileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   function goShop(id: Concern) {
     setConcern(id);
@@ -226,32 +336,96 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
           >
             <SearchIcon />
           </button>
-          <button
-            aria-label="Wishlist"
-            onClick={() => alert("Wishlist features are coming soon!")}
-            className="inline-grid place-items-center w-10 h-10 rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition shrink-0"
-          >
-            <HeartIcon />
-          </button>
-          <button
-            aria-label="Cart"
-            onClick={openCart}
-            className="relative inline-grid place-items-center w-10 h-10 rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition shrink-0"
-          >
-            <CartIcon />
-            {count > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 grid place-items-center rounded-full bg-gold text-forest text-[10px] font-semibold">
-                {count}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => alert("Secure accounts & login coming soon!")}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gold/30 text-forest hover:bg-gold/10 text-xs font-semibold tracking-wider uppercase transition shrink-0"
-          >
-            <UserIcon />
-            <span className="hidden xl:inline">Login</span>
-          </button>
+          {user && (
+            <button
+              aria-label="Wishlist"
+              onClick={openWishlist}
+              className="relative inline-grid place-items-center w-10 h-10 rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition shrink-0 cursor-pointer"
+            >
+              <HeartIcon />
+              {wishlist.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 grid place-items-center rounded-full bg-gold text-forest text-[10px] font-semibold">
+                  {wishlist.length}
+                </span>
+              )}
+            </button>
+          )}
+          {user && (
+            <button
+              id="cart-btn-desktop"
+              aria-label="Cart"
+              onClick={openCart}
+              className="relative inline-grid place-items-center w-10 h-10 rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition shrink-0"
+            >
+              <CartIcon />
+              {count > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 grid place-items-center rounded-full bg-gold text-forest text-[10px] font-semibold">
+                  {count}
+                </span>
+              )}
+            </button>
+          )}
+          {user ? (
+            <div className="relative">
+              <button
+                onClick={() => setProfileDropdownOpen(!isProfileDropdownOpen)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gold/30 text-forest hover:bg-gold/10 text-xs font-semibold tracking-wider uppercase transition shrink-0 cursor-pointer"
+              >
+                <UserIcon />
+                <span className="hidden xl:inline">
+                  {user.role === "admin" ? "Admin Panel" : user.displayName || "Account"}
+                </span>
+              </button>
+              {isProfileDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setProfileDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gold/25 bg-ivory shadow-luxe p-4 z-20 space-y-3 text-left">
+                    <div className="border-b border-gold/10 pb-2">
+                      <div className="font-semibold text-xs text-forest">
+                        {user.displayName || "Valued Member"}
+                      </div>
+                      <div className="text-[10px] text-forest/65 truncate mt-0.5">
+                        {user.email}
+                      </div>
+                    </div>
+                    <Link
+                      to="/orders"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="block w-full text-left text-xs font-semibold text-forest hover:text-gold transition"
+                    >
+                      My Orders
+                    </Link>
+                    {user.role === "admin" && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setProfileDropdownOpen(false)}
+                        className="block w-full text-left text-xs font-semibold text-forest hover:text-gold transition"
+                      >
+                        Admin Dashboard
+                      </Link>
+                    )}
+                    <button
+                      onClick={async () => {
+                        setProfileDropdownOpen(false);
+                        await logout();
+                      }}
+                      className="block w-full text-left text-xs font-bold text-amber-800 hover:text-amber-900 transition cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gold/30 text-forest hover:bg-gold/10 text-xs font-semibold tracking-wider uppercase transition shrink-0"
+            >
+              <UserIcon />
+              <span className="hidden xl:inline">Login</span>
+            </Link>
+          )}
           <a
             href="#products"
             className="hidden sm:inline-block px-5 py-2.5 rounded-full bg-forest text-ivory text-sm tracking-wide hover:bg-forest-deep transition shrink-0"
@@ -735,7 +909,8 @@ const PRODUCTS = [
 
 function Products() {
   const { concern, setConcern } = useContext(ConcernContext);
-  const filtered = concern === "all" ? PRODUCTS : PRODUCTS.filter((p) => p.concern === concern);
+  const { products } = useProducts();
+  const filtered = concern === "all" ? products : products.filter((p) => p.concern === concern);
 
   function getTabClass(id: Concern) {
     const isActive = concern === id;
@@ -788,8 +963,9 @@ function Products() {
   );
 }
 
-function ProductCard({ product }: { product: (typeof PRODUCTS)[number] }) {
-  const { addItem } = useContext(CartContext);
+function ProductCard({ product }: { product: ProductItem }) {
+  const { addItem, wishlist, toggleWishlist } = useContext(CartContext);
+  const isWishlisted = wishlist.some((item) => item.name === product.name);
 
   const isHair = product.name.toLowerCase().includes("hair");
   const isPain = product.name.toLowerCase().includes("dard") || product.name.toLowerCase().includes("pain");
@@ -838,9 +1014,14 @@ function ProductCard({ product }: { product: (typeof PRODUCTS)[number] }) {
         </span>
         <button
           aria-label="Wishlist"
-          className="absolute top-5 right-5 w-10 h-10 grid place-items-center rounded-full bg-ivory/95 border border-gold/30 text-forest hover:bg-gold hover:text-ivory transition"
+          onClick={() => toggleWishlist(product)}
+          className={`absolute top-5 right-5 w-10 h-10 grid place-items-center rounded-full border transition cursor-pointer ${
+            isWishlisted
+              ? "bg-[#cfa860] border-[#cfa860] text-ivory"
+              : "bg-ivory/95 border-gold/30 text-forest hover:bg-gold hover:text-ivory"
+          }`}
         >
-          <HeartIcon />
+          <HeartIcon fill={isWishlisted ? "currentColor" : "none"} />
         </button>
       </div>
 
@@ -863,13 +1044,13 @@ function ProductCard({ product }: { product: (typeof PRODUCTS)[number] }) {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => addItem(product)}
+              onClick={(e) => addItem(product, e, false)}
               className={`px-4 py-2.5 rounded-full border text-xs tracking-[0.15em] uppercase transition duration-300 ${addBtnClass}`}
             >
               Add
             </button>
             <button
-              onClick={() => addItem(product)}
+              onClick={(e) => addItem(product, e, true)}
               className={`px-4 py-2.5 rounded-full text-xs tracking-[0.15em] uppercase transition duration-300 ${buyBtnClass}`}
             >
               Buy Now
@@ -884,17 +1065,55 @@ function ProductCard({ product }: { product: (typeof PRODUCTS)[number] }) {
 /* ---------------- CART DRAWER ---------------- */
 function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, setQty, subtotal } = useContext(CartContext);
+  const { createOrder } = useOrders();
+  const { user, logout } = useAuth();
+
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
+
+  const handleCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (items.length === 0) return;
+
+    await createOrder({
+      customerName: customerName || user?.displayName || "Customer",
+      customerEmail: user?.email || "customer@example.com",
+      customerPhone: customerPhone || "+91 98765 43210",
+      shippingAddress: shippingAddress || "Default Delivery Address, India",
+      items: items.map((i) => ({
+        name: i.name,
+        price: i.price,
+        qty: i.qty,
+        img: i.img,
+      })),
+      total: subtotal,
+    });
+
+    setOrderSuccess(true);
+    setTimeout(() => {
+      items.forEach((i) => removeItem(i.name));
+      setIsCheckingOut(false);
+      setOrderSuccess(false);
+      closeCart();
+    }, 2500);
+  };
+
   return (
     <>
       <div
         aria-hidden={!isOpen}
         onClick={closeCart}
-        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-          }`}
+        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${
+          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
       />
       <aside
-        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${isOpen ? "translate-x-0" : "translate-x-full"
-          }`}
+        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
         aria-label="Shopping cart"
       >
         <div className="flex items-center justify-between px-6 py-6 border-b border-gold/20">
@@ -909,48 +1128,92 @@ function CartDrawer() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          {items.length === 0 && (
-            <p className="text-forest/60 text-sm">
-              Your bag is empty. Explore the collection to begin your ritual.
-            </p>
-          )}
-          {items.map((i) => (
-            <div key={i.name} className="flex gap-4">
-              <img
-                src={i.img}
-                alt={i.name}
-                className="w-20 h-20 rounded-xl object-cover border border-gold/20"
-              />
-              <div className="flex-1">
-                <div className="font-display text-lg text-forest">{i.name}</div>
-                <div className="text-sm text-forest/60">{i.price}</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <button
-                    onClick={() => setQty(i.name, i.qty - 1)}
-                    className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
-                  >
-                    −
-                  </button>
-                  <span className="text-sm text-forest w-4 text-center">{i.qty}</span>
-                  <button
-                    onClick={() => setQty(i.name, i.qty + 1)}
-                    className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => removeItem(i.name)}
-                    className="ml-auto text-xs text-forest/50 hover:text-gold underline"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
+          {orderSuccess ? (
+            <div className="p-6 bg-emerald-950/10 border border-emerald-800/30 rounded-3xl text-center space-y-3">
+              <div className="text-3xl">🎉</div>
+              <h3 className="font-display text-xl text-forest font-bold">
+                Order Placed Successfully!
+              </h3>
+              <p className="text-xs text-forest/70">
+                Thank you for choosing Thakur Yograj. Your order has been saved and sent to our admin team.
+              </p>
             </div>
-          ))}
+          ) : (
+            <>
+              {items.length === 0 && (
+                <p className="text-forest/60 text-sm">
+                  Your bag is empty. Explore the collection to begin your ritual.
+                </p>
+              )}
+              {items.map((i) => (
+                <div key={i.name} className="flex gap-4">
+                  <img
+                    src={i.img}
+                    alt={i.name}
+                    className="w-20 h-20 rounded-xl object-cover border border-gold/20"
+                  />
+                  <div className="flex-1">
+                    <div className="font-display text-lg text-forest">{i.name}</div>
+                    <div className="text-sm text-forest/60">{i.price}</div>
+                    <div className="mt-2 flex items-center gap-3">
+                      <button
+                        onClick={() => setQty(i.name, i.qty - 1)}
+                        className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
+                      >
+                        −
+                      </button>
+                      <span className="text-sm text-forest w-4 text-center">{i.qty}</span>
+                      <button
+                        onClick={() => setQty(i.name, i.qty + 1)}
+                        className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => removeItem(i.name)}
+                        className="ml-auto text-xs text-forest/50 hover:text-gold underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {isCheckingOut && items.length > 0 && (
+                <form id="checkout-form" onSubmit={handleCheckout} className="pt-4 border-t border-gold/20 space-y-3 text-xs">
+                  <h4 className="font-display text-base text-forest font-bold">Shipping Details</h4>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Full Name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                  />
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Phone Number (+91)"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                  />
+                  <textarea
+                    required
+                    rows={2}
+                    placeholder="Full Shipping Address & Pincode"
+                    value={shippingAddress}
+                    onChange={(e) => setShippingAddress(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                  />
+                </form>
+              )}
+            </>
+          )}
         </div>
 
-        {items.length > 0 && (
+        {items.length > 0 && !orderSuccess && (
           <div className="px-6 py-6 border-t border-gold/20">
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-forest/70">Subtotal</span>
@@ -958,9 +1221,22 @@ function CartDrawer() {
                 ₹{subtotal.toLocaleString("en-IN")}
               </span>
             </div>
-            <button className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition">
-              Checkout
-            </button>
+            {isCheckingOut ? (
+              <button
+                type="submit"
+                form="checkout-form"
+                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold"
+              >
+                Place Order (COD)
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsCheckingOut(true)}
+                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold"
+              >
+                Proceed to Checkout
+              </button>
+            )}
           </div>
         )}
       </aside>
@@ -1160,7 +1436,7 @@ function Spotlight() {
                         <div className="text-xs text-ivory/40 line-through">{tabProduct.old}</div>
                       </div>
                       <button
-                        onClick={() => addItem(tabProduct)}
+                        onClick={(e) => addItem(tabProduct, e, true)}
                         className="px-8 py-4 rounded-full bg-gold text-forest text-xs tracking-[0.2em] uppercase font-bold hover:bg-gold-soft transition shadow-luxe"
                       >
                         Shop This Remedy
@@ -2114,6 +2390,52 @@ function FinalCTA() {
 
 /* ---------------- FOOTER ---------------- */
 function Footer() {
+  const { setConcern } = useContext(ConcernContext);
+  const [subscribeEmail, setSubscribeEmail] = useState("");
+  const whatsappUrl = "https://wa.me/918959568262?text=Hello%20Thakur%20Yograj%20Ayurveda%2C%20I%20have%20a%20query%20about%20your%20products.";
+
+  const handleSubscribeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subscribeEmail) return;
+    toast.success("Thank you for subscribing! Check your inbox for our latest Ayurvedic guides and exclusive offers.");
+    setSubscribeEmail("");
+  };
+
+  const handleFooterLink = (label: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    const l = label.toLowerCase();
+    if (l === "hair oil") {
+      setConcern("hairfall");
+      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "pain relief oil") {
+      setConcern("pain");
+      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "combo packs" || l === "gift sets") {
+      setConcern("ritual");
+      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "our story") {
+      document.getElementById("story")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "ingredients") {
+      document.getElementById("ingredients")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "process") {
+      document.getElementById("process")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "journal") {
+      document.getElementById("journal")?.scrollIntoView({ behavior: "smooth" });
+    } else if (l === "whatsapp") {
+      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    } else if (l === "contact") {
+      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    } else if (l === "shipping") {
+      toast.info("Shipping Information: Free shipping across India on orders above ₹499. Orders are shipped via Bluedart and delivered within 3-5 business days.");
+    } else if (l === "returns") {
+      toast.info("Return Policy: We offer a 15-day return policy for unused and unopened products. Contact us via WhatsApp to initiate a return.");
+    } else if (l === "privacy" || l === "terms") {
+      toast.info(`${label}: We prioritize customer data security. We do not sell or share your personal details with third-party networks.`);
+    } else if (l === "instagram") {
+      toast.info("Follow us on Instagram: @ThakurYograjAyurveda (Official handle coming soon!)");
+    }
+  };
+
   return (
     <footer className="bg-ivory pt-20 pb-10 border-t border-gold/20">
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
@@ -2124,13 +2446,16 @@ function Footer() {
               Luxury Ayurvedic wellness, hand-crafted in Chhattisgarh. Rooted in tradition, refined
               for today.
             </p>
-            <form className="mt-8 flex gap-2 max-w-sm">
+            <form onSubmit={handleSubscribeSubmit} className="mt-8 flex gap-2 max-w-sm">
               <input
                 type="email"
+                required
                 placeholder="Your email address"
+                value={subscribeEmail}
+                onChange={(e) => setSubscribeEmail(e.target.value)}
                 className="flex-1 bg-transparent border-b border-gold/40 focus:border-gold outline-none py-3 text-sm text-forest placeholder:text-forest/40"
               />
-              <button className="px-5 py-3 rounded-full bg-forest text-ivory text-xs tracking-[0.2em] uppercase hover:bg-forest-deep transition">
+              <button type="submit" className="px-5 py-3 rounded-full bg-forest text-ivory text-xs tracking-[0.2em] uppercase hover:bg-forest-deep transition cursor-pointer">
                 Subscribe
               </button>
             </form>
@@ -2139,9 +2464,18 @@ function Footer() {
           <FooterCol
             title="Shop"
             links={["Hair Oil", "Pain Relief Oil", "Combo Packs", "Gift Sets"]}
+            onLinkClick={handleFooterLink}
           />
-          <FooterCol title="Company" links={["Our Story", "Ingredients", "Process", "Journal"]} />
-          <FooterCol title="Support" links={["Contact", "Shipping", "Returns", "WhatsApp"]} />
+          <FooterCol 
+            title="Company" 
+            links={["Our Story", "Ingredients", "Process", "Journal"]} 
+            onLinkClick={handleFooterLink}
+          />
+          <FooterCol 
+            title="Support" 
+            links={["Contact", "Shipping", "Returns", "WhatsApp"]} 
+            onLinkClick={handleFooterLink}
+          />
         </div>
 
         <div className="mt-16 gold-divider" />
@@ -2149,16 +2483,16 @@ function Footer() {
         <div className="mt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-forest/55">
           <div>© {new Date().getFullYear()} Thakur Yograj Ayurveda · Made in India</div>
           <div className="flex items-center gap-6 tracking-widest uppercase">
-            <a href="#" className="hover:text-gold">
+            <a href="#" onClick={(e) => handleFooterLink("Instagram", e)} className="hover:text-gold cursor-pointer transition">
               Instagram
             </a>
-            <a href="#" className="hover:text-gold">
+            <a href="#" onClick={(e) => handleFooterLink("WhatsApp", e)} className="hover:text-gold cursor-pointer transition">
               WhatsApp
             </a>
-            <a href="#" className="hover:text-gold">
+            <a href="#" onClick={(e) => handleFooterLink("Privacy", e)} className="hover:text-gold cursor-pointer transition">
               Privacy
             </a>
-            <a href="#" className="hover:text-gold">
+            <a href="#" onClick={(e) => handleFooterLink("Terms", e)} className="hover:text-gold cursor-pointer transition">
               Terms
             </a>
           </div>
@@ -2168,14 +2502,26 @@ function Footer() {
   );
 }
 
-function FooterCol({ title, links }: { title: string; links: string[] }) {
+function FooterCol({ 
+  title, 
+  links, 
+  onLinkClick 
+}: { 
+  title: string; 
+  links: string[]; 
+  onLinkClick: (label: string, e: React.MouseEvent) => void;
+}) {
   return (
     <div className="md:col-span-2">
       <div className="text-xs tracking-[0.3em] uppercase text-forest/50">{title}</div>
       <ul className="mt-4 space-y-3 text-sm text-forest/80">
         {links.map((l) => (
           <li key={l}>
-            <a href="#" className="hover:text-gold transition">
+            <a 
+              href="#" 
+              onClick={(e) => onLinkClick(l, e)} 
+              className="hover:text-gold transition cursor-pointer"
+            >
               {l}
             </a>
           </li>
@@ -2238,13 +2584,13 @@ function ArrowIcon() {
     </svg>
   );
 }
-function HeartIcon() {
+function HeartIcon({ fill = "none" }: { fill?: string }) {
   return (
     <svg
       width="18"
       height="18"
       viewBox="0 0 24 24"
-      fill="none"
+      fill={fill}
       stroke="currentColor"
       strokeWidth="1.5"
     >
@@ -2677,6 +3023,7 @@ function VideoGallery() {
 }
 
 /* ---------------- KNOWLEDGE HUB ---------------- */
+/* ---------------- KNOWLEDGE HUB ---------------- */
 const HUB_ARTICLES = [
   {
     title: "Understanding Hair Loss: The Ayurvedic Perspective",
@@ -2684,6 +3031,14 @@ const HUB_ARTICLES = [
     time: "5 min read",
     category: "Trichology",
     img: hairModelImg,
+    content: `Ayurveda views hair health as a direct reflection of your internal metabolic state and the balance of your biological energies (Doshas). According to ancient texts, hair is an *Upadhatu* (by-product) of the bone tissue (*Asthi Dhatu*), meaning that the quality of your hair relies heavily on the nourishment your skeletal and metabolic systems receive.
+
+### The Role of Pitta Dosha
+Excess heat in the body, driven by an aggravated Pitta dosha, is the primary driver of premature graying and hair thinning. When Pitta accumulates in the scalp, it inflames the hair follicles, leading to weak roots and accelerated shedding. To balance Pitta, cool and soothing botanical infusions like Amla, Bhringraj, and Coconut oil are recommended.
+
+### The Impact of Vata and Kapha
+- **Vata Imbalance**: Leads to dry scalp, flaky skin, split ends, and brittle strands. Vata responds best to grounding, heavy oils like Sesame oil.
+- **Kapha Imbalance**: Produces excess sebum, leading to sticky roots, greasy dandruff, and clogged follicles. Kapha scalp conditions benefit from stimulating herbs like Rosemary and Ginger.`,
   },
   {
     title: "The Diet for Healthy Hair: Foods to Feed Your Roots",
@@ -2691,6 +3046,16 @@ const HUB_ARTICLES = [
     time: "4 min read",
     category: "Nutrition",
     img: ingredientsImg,
+    content: `While topical applications are vital, true hair rejuvenation starts from within. In Ayurveda, the food we consume undergoes a multi-stage transformation process, nourishing our plasma (*Rasa*), blood (*Rakta*), muscle, fat, and bone tissues in sequence. To grow strong, thick hair, your body requires a rich supply of nutrients that specifically target the blood and bone channels.
+
+### Hair-Nourishing Ayurvedic Superfoods
+- **Amla (Gooseberry)**: Packed with Vitamin C, Amla is a powerful antioxidant that prevents oxidative damage to hair follicles and boosts melanin synthesis to ward off gray hair.
+- **Almonds and Walnuts**: Rich in healthy fats and zinc, these nuts nourish the *Asthi Dhatu* (bone tissue), providing structural integrity to hair shafts.
+- **Sesame Seeds**: Eating black sesame seeds daily supplies the body with calcium and magnesium, which are crucial for hair thickness.
+- **Curry Leaves**: Traditionally eaten or cooked into foods to enhance iron absorption and hair pigmentation.
+
+### Foods to Limit
+To maintain balanced Doshas, minimize consumption of excessively spicy, salty, or sour foods, which can increase body heat and aggravate hair fall.`,
   },
   {
     title: "The Art of Shiro Abhyanga: Scalp Massage Guide",
@@ -2698,10 +3063,38 @@ const HUB_ARTICLES = [
     time: "6 min read",
     category: "Rituals",
     img: processImg,
+    content: `Shiro Abhyanga is the ancient practice of Ayurvedic head massage. Beyond nourishing the hair, this ritual stimulates vital energy centers (*Marma points*) on the scalp, relaxes the nervous system, improves sleep, and encourages healthy circulation to the hair roots.
+
+### Step-by-Step Massage Ritual
+1. **Warm the Oil**: Always warm your Ayurvedic oil slightly before application to facilitate absorption.
+2. **Apply to Crown**: Pour a small amount directly onto the crown of the head (*Adhipati Marma*), which controls the flow of energy to the entire scalp.
+3. **Spread Evenly**: Using flat hands, spread the oil across the forehead, sides, and back of the scalp.
+4. **Knead & Circle**: Use your fingertips to make firm, circular motions. Work from the hairline backwards to the neck.
+5. **Stimulate Marmas**: Gently press the center of the crown, the base of the skull, and the temples to relieve stress and release tension.
+
+Performing Shiro Abhyanga 2–3 times a week for 10–15 minutes before washing will dramatically improve hair tensile strength.`,
   },
 ];
 
 function KnowledgeHub() {
+  const [selectedArticle, setSelectedArticle] = useState<typeof HUB_ARTICLES[0] | null>(null);
+  const { addItem } = useContext(CartContext);
+
+  const getProductObj = (title: string) => {
+    if (title.includes("Diet")) {
+      return {
+        name: "The Wellness Ritual",
+        price: "₹1,199",
+        img: tyHairOilDuo,
+      };
+    }
+    return {
+      name: "Herbal Hair Oil",
+      price: "₹799",
+      img: tyHairOil,
+    };
+  };
+
   return (
     <section id="journal" className="py-24 bg-cream/30">
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
@@ -2732,25 +3125,25 @@ function KnowledgeHub() {
             </div>
 
             <div className="mt-12">
-              <a
-                href="#journal"
-                className="inline-flex items-center gap-3 px-6 py-3.5 rounded-full bg-gold text-forest text-xs tracking-wider uppercase font-bold hover:bg-gold-soft transition shadow-luxe"
+              <button
+                onClick={() => setSelectedArticle(HUB_ARTICLES[0])}
+                className="inline-flex items-center gap-3 px-6 py-3.5 rounded-full bg-gold text-forest text-xs tracking-wider uppercase font-bold hover:bg-gold-soft transition shadow-luxe cursor-pointer"
               >
-                Read All Guides <ArrowIcon />
-              </a>
+                Read Featured Guide <ArrowIcon />
+              </button>
             </div>
           </div>
 
           {/* Right Articles Grid */}
           <div className="lg:col-span-8 grid sm:grid-cols-3 gap-6">
             {HUB_ARTICLES.map((art) => (
-              <a
+              <button
                 key={art.title}
-                href="#journal"
-                className="group flex flex-col rounded-[2rem] bg-card border border-gold/15 overflow-hidden shadow-luxe hover:-translate-y-1.5 transition-all duration-500"
+                onClick={() => setSelectedArticle(art)}
+                className="group flex flex-col rounded-[2rem] bg-card border border-gold/15 overflow-hidden shadow-luxe hover:-translate-y-1.5 transition-all duration-500 text-left cursor-pointer"
               >
                 {/* Image panel */}
-                <div className="relative aspect-[4/3] overflow-hidden bg-cream">
+                <div className="relative aspect-[4/3] overflow-hidden bg-cream w-full">
                   <img
                     src={art.img}
                     alt={art.title}
@@ -2778,11 +3171,107 @@ function KnowledgeHub() {
                     Read Article <ArrowIcon />
                   </div>
                 </div>
-              </a>
+              </button>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Article Reader Modal */}
+      {selectedArticle && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md">
+          <div className="relative w-full max-w-3xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            
+            {/* Header image banner */}
+            <div className="relative h-48 md:h-64 shrink-0 bg-cream">
+              <img
+                src={selectedArticle.img}
+                alt={selectedArticle.title}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-ivory via-transparent to-black/20" />
+              <button
+                onClick={() => setSelectedArticle(null)}
+                className="absolute top-6 right-6 w-9 h-9 grid place-items-center rounded-full bg-ivory/90 border border-gold/20 text-forest hover:bg-gold hover:text-ivory transition cursor-pointer z-10"
+                aria-label="Close article"
+              >
+                ✕
+              </button>
+              <span className="absolute bottom-4 left-8 px-3 py-1.5 rounded-full bg-gold text-forest text-[10px] tracking-widest uppercase font-bold">
+                {selectedArticle.category}
+              </span>
+            </div>
+
+            {/* Scrollable content panel */}
+            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-8 space-y-6">
+              <div>
+                <span className="text-[10px] tracking-wider text-forest/50 font-semibold">{selectedArticle.time}</span>
+                <h3 className="font-display text-3xl md:text-4xl text-forest mt-2 font-bold leading-tight">
+                  {selectedArticle.title}
+                </h3>
+              </div>
+
+              {/* Body text parsing paragraph line breaks and markdown headers */}
+              <div className="text-sm md:text-base text-forest/80 space-y-4 leading-relaxed font-sans">
+                {selectedArticle.content.split("\n\n").map((para, pIdx) => {
+                  if (para.startsWith("###")) {
+                    return (
+                      <h4 key={pIdx} className="font-display text-xl text-forest font-bold pt-4">
+                        {para.replace("###", "").trim()}
+                      </h4>
+                    );
+                  }
+                  if (para.startsWith("- ")) {
+                    return (
+                      <ul key={pIdx} className="list-disc pl-5 space-y-2">
+                        {para.split("\n").map((li, lIdx) => (
+                          <li key={lIdx}>
+                            {li.replace("- ", "").trim()}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  }
+                  return (
+                    <p key={pIdx}>
+                      {para}
+                    </p>
+                  );
+                })}
+              </div>
+
+              {/* Recommended Product Card */}
+              {(() => {
+                const recProduct = getProductObj(selectedArticle.title);
+                return (
+                  <div className="mt-12 p-6 rounded-3xl border border-gold/20 bg-forest/[0.02] flex flex-col sm:flex-row items-center gap-6 w-full">
+                    <img
+                      src={recProduct.img}
+                      alt={recProduct.name}
+                      className="w-20 h-20 object-cover rounded-2xl border border-gold/15 shrink-0"
+                    />
+                    <div className="flex-1 text-center sm:text-left min-w-0">
+                      <span className="text-[8px] tracking-[0.2em] uppercase text-gold font-bold">Related Remedy</span>
+                      <h5 className="font-display text-lg text-forest mt-0.5 truncate">{recProduct.name}</h5>
+                      <p className="text-xs text-forest/65 leading-relaxed">Incorporate this botanical remedy in your daily routine.</p>
+                      <div className="font-display text-base text-forest mt-1.5 font-bold">{recProduct.price}</div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        addItem(recProduct, e, true);
+                        setSelectedArticle(null);
+                      }}
+                      className="px-5 py-3 rounded-full bg-forest text-ivory text-[10px] tracking-wider uppercase font-bold hover:bg-forest-deep transition shrink-0 cursor-pointer shadow-sm w-full sm:w-auto"
+                    >
+                      Add & Buy
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -2987,6 +3476,8 @@ function RitualGuide() {
 
 /* ---------------- DOSHA HAIR & BODY QUIZ CTA ---------------- */
 function DoshaQuizCTA() {
+  const { openQuiz } = useContext(CartContext);
+
   return (
     <section className="py-24 bg-gradient-forest text-ivory relative overflow-hidden">
       {/* Background glowing rings */}
@@ -3009,8 +3500,8 @@ function DoshaQuizCTA() {
 
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <button
-            onClick={() => alert("Quiz features are in development. Our Vaidya consult team will be online soon!")}
-            className="px-8 py-4 rounded-full bg-gold text-forest text-xs tracking-[0.2em] uppercase font-bold hover:bg-gold-soft transition shadow-luxe"
+            onClick={openQuiz}
+            className="px-8 py-4 rounded-full bg-gold text-forest text-xs tracking-[0.2em] uppercase font-bold hover:bg-gold-soft transition shadow-luxe cursor-pointer"
           >
             Start Free Assessment
           </button>
@@ -3031,5 +3522,351 @@ function DoshaQuizCTA() {
         </div>
       </div>
     </section>
+  );
+}
+
+/* ---------------- WISHLIST DRAWER ---------------- */
+function WishlistDrawer() {
+  const { wishlist, isWishlistOpen, closeWishlist, toggleWishlist, addItem } = useContext(CartContext);
+
+  return (
+    <>
+      <div
+        aria-hidden={!isWishlistOpen}
+        onClick={closeWishlist}
+        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${
+          isWishlistOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      />
+      <aside
+        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${
+          isWishlistOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+        aria-label="Wishlist"
+      >
+        <div className="flex items-center justify-between px-6 py-6 border-b border-gold/20">
+          <div className="font-display text-2xl text-forest">Your Wishlist</div>
+          <button
+            aria-label="Close wishlist"
+            onClick={closeWishlist}
+            className="w-9 h-9 grid place-items-center rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+          {wishlist.length === 0 ? (
+            <p className="text-forest/60 text-sm">
+              Your wishlist is empty. Tap the heart on products to save them here.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {wishlist.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-center gap-4 p-4 rounded-2xl border border-gold/10 bg-ivory/50"
+                >
+                  <img
+                    src={item.img}
+                    alt={item.name}
+                    className="w-16 h-16 object-cover rounded-xl border border-gold/15"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-display text-base text-forest truncate">{item.name}</h4>
+                    <p className="text-xs text-gold font-semibold mt-0.5">{item.price}</p>
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        addItem(item, e, true);
+                        toggleWishlist(item);
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-forest text-ivory text-[10px] tracking-wider uppercase font-semibold hover:bg-forest-deep transition cursor-pointer"
+                    >
+                      Move to Bag
+                    </button>
+                    <button
+                      onClick={() => toggleWishlist(item)}
+                      className="text-stone-400 hover:text-red-700 text-[10px] uppercase font-semibold text-center transition cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+/* ---------------- DOSHA ASSESSMENT QUIZ MODAL ---------------- */
+const QUIZ_QUESTIONS = [
+  {
+    id: 1,
+    question: "Describe your scalp and hair condition:",
+    options: [
+      { type: "vata", text: "Dry, frizzy, split ends, rough texture, prone to tangles" },
+      { type: "pitta", text: "Thinning, premature graying, sensitive scalp, warm feeling" },
+      { type: "kapha", text: "Thick, oily, heavy, naturally lustrous, needs frequent washing" },
+    ],
+  },
+  {
+    id: 2,
+    question: "How do your muscles and joints feel after moderate activity?",
+    options: [
+      { type: "vata", text: "Dry, popping or cracking joints, stiffness in lower back, light pain" },
+      { type: "pitta", text: "Warm to touch, prone to inflammation, swelling, or burning" },
+      { type: "kapha", text: "Heavy, stable but stiff, water retention, slow-moving or sluggish" },
+    ],
+  },
+  {
+    id: 3,
+    question: "What is your body's temperature and climate tendency?",
+    options: [
+      { type: "vata", text: "Cold hands/feet, dislike dry wind, prefer warm heating" },
+      { type: "pitta", text: "Always warm, sweat easily, prefer cool rooms and cold drinks" },
+      { type: "kapha", text: "Dislike damp cold, adapt well to warm weather but feel heavy in humidity" },
+    ],
+  },
+];
+
+function DoshaQuizModal() {
+  const { isQuizOpen, closeQuiz, addItem } = useContext(CartContext);
+  const [step, setStep] = useState(0); // 0: intro, 1, 2, 3: questions, 4: results
+  const [answers, setAnswers] = useState<string[]>([]);
+
+  if (!isQuizOpen) return null;
+
+  const handleStart = () => {
+    setStep(1);
+    setAnswers([]);
+  };
+
+  const handleAnswer = (type: string) => {
+    const nextAnswers = [...answers, type];
+    setAnswers(nextAnswers);
+    if (step < 3) {
+      setStep(step + 1);
+    } else {
+      setStep(4);
+    }
+  };
+
+  const handleReset = () => {
+    setStep(0);
+    setAnswers([]);
+  };
+
+  // Calculate results
+  const vataCount = answers.filter((a) => a === "vata").length;
+  const pittaCount = answers.filter((a) => a === "pitta").length;
+  const kaphaCount = answers.filter((a) => a === "kapha").length;
+
+  let dominant: "vata" | "pitta" | "kapha" = "vata";
+  if (pittaCount > vataCount && pittaCount >= kaphaCount) dominant = "pitta";
+  else if (kaphaCount > vataCount && kaphaCount > pittaCount) dominant = "kapha";
+
+  // Recommends
+  const recommendations = {
+    vata: {
+      name: "Vata Profile (Air & Space)",
+      desc: "Your constitution is dominated by Air and Space elements. You benefit from grounding, warming, and deeply lubricating treatments to soothe dry joints and restore skin and hair moisture.",
+    },
+    pitta: {
+      name: "Pitta Profile (Fire & Water)",
+      desc: "Your constitution is dominated by Fire and Water elements. You benefit from cooling, soothing, and anti-inflammatory formulations to balance heat, soothe scalp sensitivity, and promote hair growth.",
+    },
+    kapha: {
+      name: "Kapha Profile (Earth & Water)",
+      desc: "Your constitution is dominated by Earth and Water elements. You benefit from stimulating, circulation-boosting, and warming rituals to reduce stiffness and balance moisture.",
+    },
+  };
+
+  const result = recommendations[dominant];
+
+  const getProductObj = (type: "vata" | "pitta" | "kapha") => {
+    if (type === "vata") {
+      return {
+        name: "Dard Nivarak Tel",
+        price: "₹499",
+        img: tyPainOil,
+      };
+    }
+    if (type === "pitta") {
+      return {
+        name: "Herbal Hair Oil",
+        price: "₹799",
+        img: tyHairOil,
+      };
+    }
+    return {
+      name: "The Wellness Ritual",
+      price: "₹1,199",
+      img: tyHairOilDuo,
+    };
+  };
+
+  const activeProduct = getProductObj(dominant);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md">
+      <div className="relative w-full max-w-2xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl p-8 md:p-12 overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-24 h-24 bg-gold/5 rounded-full blur-xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-forest/5 rounded-full blur-xl pointer-events-none" />
+
+        {/* Close Button */}
+        <button
+          onClick={closeQuiz}
+          className="absolute top-6 right-6 w-9 h-9 grid place-items-center rounded-full border border-gold/20 text-forest hover:bg-gold/10 transition cursor-pointer z-10"
+        >
+          ✕
+        </button>
+
+        {step === 0 && (
+          <div className="text-center space-y-6 my-auto">
+            <span className="text-[10px] tracking-[0.45em] uppercase text-gold font-bold">Ayurvedic Quiz</span>
+            <h3 className="font-display text-3xl md:text-4xl text-forest">
+              Discover Your Dosha Constitution
+            </h3>
+            <p className="text-xs md:text-sm text-forest/75 max-w-md mx-auto leading-relaxed">
+              Every individual possesses a unique blueprint of three biological forces: Vata (Air), Pitta (Fire), and Kapha (Earth). Take this simple diagnostic to match with your botanical ratio.
+            </p>
+            <button
+              onClick={handleStart}
+              className="px-8 py-3.5 rounded-full bg-forest text-ivory text-xs tracking-widest uppercase font-bold hover:bg-forest-deep transition shadow-md cursor-pointer"
+            >
+              Start Diagnostic
+            </button>
+          </div>
+        )}
+
+        {step > 0 && step <= 3 && (
+          <div className="space-y-6 my-auto flex-1 flex flex-col justify-center">
+            <div className="flex justify-between items-center text-[10px] tracking-wider text-forest/50 uppercase font-semibold">
+              <span>Question {step} of 3</span>
+              <span>{Math.round((step / 3) * 100)}% Complete</span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full h-1 bg-gold/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gold transition-all duration-500"
+                style={{ width: `${(step / 3) * 100}%` }}
+              />
+            </div>
+
+            <h4 className="font-display text-xl md:text-2xl text-forest font-semibold mt-4">
+              {QUIZ_QUESTIONS[step - 1].question}
+            </h4>
+
+            <div className="space-y-3 mt-6">
+              {QUIZ_QUESTIONS[step - 1].options.map((opt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleAnswer(opt.type)}
+                  className="w-full p-5 rounded-2xl border border-gold/15 bg-ivory/50 text-left text-xs md:text-sm text-forest hover:bg-gold/5 hover:border-gold transition flex items-center gap-4 cursor-pointer"
+                >
+                  <span className="w-6 h-6 rounded-full bg-forest/5 border border-gold/25 text-[10px] font-display flex items-center justify-center shrink-0 text-forest/60">
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <span>{opt.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-6 overflow-y-auto pr-2 flex-1 flex flex-col justify-center py-4">
+            <div className="text-center space-y-2">
+              <span className="text-[10px] tracking-[0.45em] uppercase text-gold font-bold">Your Result</span>
+              <h3 className="font-display text-3xl md:text-4xl text-forest font-bold">
+                {result.name}
+              </h3>
+            </div>
+
+            <p className="text-xs md:text-sm text-forest/75 leading-relaxed text-center max-w-lg mx-auto">
+              {result.desc}
+            </p>
+
+            <div className="p-5 rounded-3xl border border-gold/20 bg-forest/[0.02] flex flex-col sm:flex-row items-center gap-6 max-w-lg mx-auto mt-4 w-full">
+              <img
+                src={activeProduct.img}
+                alt={activeProduct.name}
+                className="w-24 h-24 object-cover rounded-2xl border border-gold/15 shrink-0"
+              />
+              <div className="flex-1 text-center sm:text-left min-w-0">
+                <span className="text-[8px] tracking-[0.2em] uppercase text-gold font-bold">Recommended Botanical</span>
+                <h4 className="font-display text-lg md:text-xl text-forest mt-0.5 truncate">{activeProduct.name}</h4>
+                <p className="text-xs text-forest/65 mt-1 leading-relaxed">Perfect ratio for your specific doshic profile.</p>
+                <div className="font-display text-lg text-forest mt-2 font-bold">{activeProduct.price}</div>
+              </div>
+              <button
+                onClick={(e) => {
+                  addItem(activeProduct, e, true);
+                  closeQuiz();
+                }}
+                className="px-5 py-3 rounded-full bg-forest text-ivory text-[10px] tracking-wider uppercase font-bold hover:bg-forest-deep transition shrink-0 cursor-pointer shadow-sm w-full sm:w-auto"
+              >
+                Add & Checkout
+              </button>
+            </div>
+
+            <div className="flex justify-center gap-4 mt-6 shrink-0">
+              <button
+                onClick={handleReset}
+                className="px-6 py-2.5 rounded-full border border-gold/20 text-forest text-[10px] tracking-widest uppercase font-semibold hover:bg-gold/10 transition cursor-pointer"
+              >
+                Retake Assessment
+              </button>
+              <button
+                onClick={closeQuiz}
+                className="px-6 py-2.5 rounded-full bg-forest text-ivory text-[10px] tracking-widest uppercase font-semibold hover:bg-forest-deep transition cursor-pointer"
+              >
+                Close Results
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- WHATSAPP FLOATING BUTTON ---------------- */
+function WhatsAppIcon() {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.197 1.451 4.793 1.452 5.568 0 10.1-4.526 10.103-10.088.001-2.695-1.047-5.228-2.951-7.133C16.688 1.48 14.159.432 11.472.432c-5.566 0-10.097 4.527-10.1 10.089-.001 1.849.497 3.655 1.442 5.23L1.83 20.17l4.817-1.017zm11.428-5.385c-.328-.164-1.94-.957-2.24-1.066-.3-.11-.519-.164-.738.164-.22.329-.849 1.066-1.04 1.285-.192.219-.383.246-.711.082-.328-.164-1.386-.51-2.64-1.627-.975-.87-1.633-1.946-1.825-2.274-.192-.328-.02-.505.143-.668.148-.147.329-.383.493-.574.164-.192.22-.328.328-.547.11-.219.055-.41-.027-.574-.082-.164-.738-1.777-1.012-2.433-.267-.642-.539-.556-.738-.566-.19-.01-.41-.01-.629-.01-.219 0-.574.082-.875.41-.3.328-1.148 1.12-1.148 2.73 0 1.61 1.175 3.168 1.339 3.387.164.22 2.313 3.53 5.6 4.947.782.337 1.391.539 1.866.69.786.25 1.5.215 2.066.13.63-.095 1.94-.793 2.213-1.559.273-.766.273-1.422.192-1.559-.082-.137-.3-.22-.628-.383z" />
+    </svg>
+  );
+}
+
+function WhatsAppFloat() {
+  const whatsappUrl = "https://wa.me/918959568262?text=Hello%20Thakur%20Yograj%20Ayurveda%2C%20I%20have%20a%20query%20about%20your%20products.";
+
+  return (
+    <a
+      href={whatsappUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fixed bottom-6 right-6 z-[100] w-14 h-14 bg-[#25D366] text-ivory rounded-full shadow-[0_8px_24px_rgba(37,211,102,0.35)] flex items-center justify-center transition duration-300 hover:scale-110 hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(37,211,102,0.5)] group active:scale-95 cursor-pointer"
+      aria-label="Chat on WhatsApp"
+    >
+      <WhatsAppIcon />
+      <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-forest text-ivory text-[10px] tracking-wider font-semibold uppercase px-3 py-1.5 rounded-full opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-300 shadow-md whitespace-nowrap border border-gold/20">
+        Chat with a Vaidya
+      </span>
+    </a>
   );
 }
