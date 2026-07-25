@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth, setAdminEmails } from "@/lib/auth-context";
 import { useProducts, type Concern, type ProductItem } from "@/hooks/use-products";
 import { useOrders, type OrderStatus, type OrderItem } from "@/hooks/use-orders";
 import { useCoupons } from "@/hooks/use-coupons";
 import { useMessages, type ContactMessage } from "@/hooks/use-messages";
-import { isFirebaseConfigured } from "@/lib/firebase";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { toast } from "sonner";
 import {
   Package,
@@ -39,6 +40,8 @@ import {
   Copy,
   Check,
   Eye,
+  Mail,
+  Download,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -52,7 +55,52 @@ function AdminPage() {
   const { coupons, addCoupon, toggleCouponStatus, deleteCoupon } = useCoupons();
   const { messages, updateMessageStatus, deleteMessage } = useMessages();
 
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "coupons" | "messages" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "coupons" | "messages" | "subscribers" | "settings">("overview");
+
+  // GoDaddy Email Marketing Newsletter Subscribers
+  const [subscribers, setSubscribers] = useState<{ email: string; date: string }[]>([]);
+  const [subscriberQuery, setSubscriberQuery] = useState("");
+
+  useEffect(() => {
+    if (isFirebaseConfigured && db) {
+      const q = query(collection(db, "newsletter_subscribers"), orderBy("createdAt", "desc"));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const fetched = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            email: data.email || "",
+            date: data.date || new Date().toLocaleDateString("en-IN"),
+          };
+        });
+        setSubscribers(fetched);
+      });
+      return () => unsubscribe();
+    } else {
+      const saved = localStorage.getItem("thakur_newsletter_subscribers");
+      if (saved) {
+        try {
+          const list: string[] = JSON.parse(saved);
+          setSubscribers(list.map((e) => ({ email: e, date: new Date().toLocaleDateString("en-IN") })));
+        } catch {}
+      }
+    }
+  }, []);
+
+  const handleExportGoDaddyCSV = () => {
+    if (subscribers.length === 0) {
+      toast.error("No newsletter subscribers collected yet.");
+      return;
+    }
+    const headers = "Email,Date Subscribed,Source\n";
+    const rows = subscribers.map((s) => `"${s.email}","${s.date}","Website Footer"`).join("\n");
+    const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `godaddy_email_marketing_subscribers_${Date.now()}.csv`;
+    a.click();
+    toast.success("Exported CSV file formatted for GoDaddy Email Marketing!");
+  };
 
   // Admin Whitelist Management — list comes from Firestore via AuthContext
   const [newAdminEmail, setNewAdminEmail] = useState("");
@@ -256,6 +304,10 @@ function AdminPage() {
       m.subject.toLowerCase().includes(messageQuery.toLowerCase())
   );
 
+  const filteredSubscribers = subscribers.filter((s) =>
+    s.email.toLowerCase().includes(subscriberQuery.toLowerCase())
+  );
+
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
       case "Pending":
@@ -407,6 +459,23 @@ function AdminPage() {
                 {unreadMessagesCount} new
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab("subscribers")}
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
+              activeTab === "subscribers"
+                ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
+                : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Mail className="w-4 h-4" />
+              <span>Subscribers</span>
+            </div>
+            <span className="text-[10px] font-mono text-amber-200/60 font-bold">
+              {subscribers.length}
+            </span>
           </button>
 
           <button
@@ -970,7 +1039,76 @@ function AdminPage() {
             </div>
           )}
 
-          {/* TAB 6: SETTINGS */}
+          {/* TAB 6: GODADDY / NEWSLETTER SUBSCRIBERS */}
+          {activeTab === "subscribers" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6">
+                <div>
+                  <h4 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-amber-400" /> GoDaddy Email Marketing Subscribers
+                  </h4>
+                  <p className="text-xs text-amber-200/60 mt-1">
+                    Emails collected from your website footer newsletter subscription box.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-60">
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-amber-500/50" />
+                    <input
+                      type="text"
+                      value={subscriberQuery}
+                      onChange={(e) => setSubscriberQuery(e.target.value)}
+                      placeholder="Search email..."
+                      className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 pl-9 pr-4 text-xs text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleExportGoDaddyCSV}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center gap-2 cursor-pointer shrink-0 shadow-lg shadow-amber-500/10"
+                    title="Download CSV for GoDaddy Email Marketing"
+                  >
+                    <Download className="w-4 h-4" /> Export CSV for GoDaddy
+                  </button>
+                </div>
+              </div>
+
+              {filteredSubscribers.length === 0 ? (
+                <div className="p-12 text-center bg-stone-900/80 border border-amber-500/20 rounded-3xl space-y-3">
+                  <Mail className="w-8 h-8 text-amber-500/40 mx-auto" />
+                  <h4 className="font-serif text-lg font-bold text-amber-100">No Newsletter Subscribers Yet</h4>
+                  <p className="text-xs text-amber-200/60 max-w-sm mx-auto">
+                    When visitors enter their email address in the website footer newsletter box, their details will appear here automatically.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-3">
+                  <div className="flex items-center justify-between text-xs text-amber-200/50 uppercase font-semibold tracking-wider pb-2 border-b border-amber-500/10 px-3">
+                    <span>Subscriber Email</span>
+                    <span>Date Joined</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {filteredSubscribers.map((s, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-stone-950/70 border border-amber-500/10 rounded-2xl p-3.5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span className="font-mono text-xs font-bold text-amber-100">{s.email}</span>
+                        </div>
+                        <span className="text-[11px] text-amber-200/50 font-mono">{s.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 7: SETTINGS */}
           {activeTab === "settings" && (
             <div className="space-y-6">
               {/* Admin Whitelist Manager */}

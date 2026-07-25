@@ -4,18 +4,45 @@ import { toast } from "sonner";
 import brandLogo from "@/assets/logo.png";
 import { Mail, ArrowRight, ShieldCheck, Truck, RefreshCw, MessageSquare } from "lucide-react";
 
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
+
 export function SiteFooter() {
   const [subscribeEmail, setSubscribeEmail] = useState("");
   const whatsappUrl =
     "https://wa.me/918959568262?text=Hello%20Thakur%20Yograj%20Ayurveda%2C%20I%20have%20a%20query%20about%20your%20products.";
 
-  const handleSubscribeSubmit = (e: React.FormEvent) => {
+  const handleSubscribeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subscribeEmail) return;
-    toast.success(
-      "Thank you for subscribing! Check your inbox for our latest Ayurvedic guides and exclusive offers."
-    );
-    setSubscribeEmail("");
+    if (!subscribeEmail || !subscribeEmail.includes("@")) return;
+
+    const emailClean = subscribeEmail.trim().toLowerCase();
+
+    try {
+      if (isFirebaseConfigured && db) {
+        await addDoc(collection(db, "newsletter_subscribers"), {
+          email: emailClean,
+          source: "GoDaddy / Website Footer",
+          createdAt: serverTimestamp(),
+          date: new Date().toLocaleDateString("en-IN"),
+        });
+      }
+
+      // Save locally
+      const saved = localStorage.getItem("thakur_newsletter_subscribers");
+      const list = saved ? JSON.parse(saved) : [];
+      if (!list.includes(emailClean)) {
+        list.push(emailClean);
+        localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
+      }
+
+      toast.success(
+        "Thank you for subscribing! You are now subscribed to Thakur Yograj Ayurveda updates."
+      );
+      setSubscribeEmail("");
+    } catch (err) {
+      toast.error("Error subscribing. Please try again.");
+    }
   };
 
   return (
