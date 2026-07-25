@@ -208,7 +208,13 @@
 @utility animate-float-slow { animation: float-slow 7s ease-in-out infinite; }
 @utility animate-float-slower { animation: float-slower 9s ease-in-out infinite; }
 @utility animate-reveal-up { animation: reveal-up 1s cubic-bezier(0.16, 1, 0.3, 1) both; }
-@utility animate-marquee { animation: marquee 40s linear infinite; }
+@utility animate-marquee { animation: marquee 18s linear infinite; }
+
+@media (max-width: 768px) {
+  .animate-marquee {
+    animation-duration: 10s !important;
+  }
+}
 
 @keyframes cart-bounce {
   0%, 100% { transform: scale(1); }

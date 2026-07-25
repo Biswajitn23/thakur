@@ -42,11 +42,19 @@ if (isFirebaseConfigured) {
     storage = getStorage(app);
 
     if (typeof window !== "undefined") {
-      isSupported().then((supported) => {
-        if (supported && app) {
-          analytics = getAnalytics(app);
-        }
-      });
+      isSupported()
+        .then((supported) => {
+          if (supported && app) {
+            try {
+              analytics = getAnalytics(app);
+            } catch (err) {
+              // Silently ignore if blocked by ad-blocker browser extensions
+            }
+          }
+        })
+        .catch(() => {
+          // Analytics not supported or blocked by extension
+        });
     }
   } catch (err) {
     console.error("Firebase initialization error:", err);
