@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { ArrowRight, CheckCircle2, ShoppingBag, User, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ShoppingBag, User, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import ingredientsImg from "@/assets/ingredients.jpg";
 
@@ -48,15 +48,29 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleBack = () => {
+    if (
+      typeof window !== "undefined" &&
+      window.history.length > 1 &&
+      document.referrer &&
+      document.referrer.includes(window.location.host)
+    ) {
+      window.history.back();
+    } else {
+      navigate({ to: "/" });
+    }
+  };
 
   useEffect(() => {
     if (user) {
       if (user.role === "admin") {
         navigate({ to: "/admin" });
       } else {
-        navigate({ to: "/" });
+        // Return to previous page or main page
+        handleBack();
       }
     }
   }, [user, navigate]);
@@ -67,7 +81,7 @@ function LoginPage() {
 
     try {
       if (isSignUp) {
-        await signup(email, password, name);
+        await signup(email, password, name, rememberMe);
         toast.success("Account registered successfully! Welcome to the tribe.");
       } else {
         await login(email, password, rememberMe);
@@ -148,6 +162,16 @@ function LoginPage() {
       {/* Right Column: Interactive Ritual Form */}
       <div className="bg-[#faf8f5] flex flex-col items-center justify-center p-8 md:p-16 h-full overflow-y-auto">
         <div className="w-full max-w-md space-y-8">
+          {/* Top Header with Back Button */}
+          <div className="flex items-center justify-start border-b border-amber-900/10 pb-4">
+            <button
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-900/20 hover:border-amber-900/40 text-[#082a1c] hover:text-amber-900 text-xs font-semibold uppercase tracking-wider transition bg-white/80 hover:bg-white shadow-sm cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-amber-800" />
+              <span>Back</span>
+            </button>
+          </div>
           
           {/* Active Session Notification */}
           {user && (
@@ -235,17 +259,17 @@ function LoginPage() {
                 </div>
               </div>
 
-              {!isSignUp && (
-                <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-[#ebdcc9] text-[#082a1c] focus:ring-[#082a1c] w-3.5 h-3.5 cursor-pointer" 
-                    />
-                    <span>Remember Me</span>
-                  </label>
+              <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded border-[#ebdcc9] text-[#082a1c] focus:ring-[#082a1c] w-3.5 h-3.5 cursor-pointer" 
+                  />
+                  <span className="text-stone-700 font-medium">Keep me signed in</span>
+                </label>
+                {!isSignUp && (
                   <button 
                     type="button" 
                     onClick={handleForgotPassword}
@@ -253,8 +277,8 @@ function LoginPage() {
                   >
                     Forgotten Password?
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
               <button
                 type="submit"

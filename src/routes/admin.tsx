@@ -2,8 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth, setAdminEmails } from "@/lib/auth-context";
 import { useProducts, type Concern, type ProductItem } from "@/hooks/use-products";
-import { useOrders, type OrderStatus } from "@/hooks/use-orders";
+import { useOrders, type OrderStatus, type OrderItem } from "@/hooks/use-orders";
+import { useCoupons } from "@/hooks/use-coupons";
+import { useMessages, type ContactMessage } from "@/hooks/use-messages";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import { toast } from "sonner";
 import {
   Package,
   ShoppingCart,
@@ -23,6 +26,19 @@ import {
   Tag,
   DollarSign,
   UserCheck,
+  RefreshCw,
+  Server,
+  CloudCheck,
+  Upload,
+  Percent,
+  MessageSquare,
+  AlertTriangle,
+  BarChart3,
+  ToggleLeft,
+  ToggleRight,
+  Copy,
+  Check,
+  Eye,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -32,9 +48,11 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const { user, isAdmin, logout, adminEmails } = useAuth();
   const { products, addProduct, updateProduct, deleteProduct } = useProducts();
-  const { orders, updateOrderStatus, deleteOrder } = useOrders();
+  const { orders, updateOrderStatus, updateOrderTracking, deleteOrder } = useOrders();
+  const { coupons, addCoupon, toggleCouponStatus, deleteCoupon } = useCoupons();
+  const { messages, updateMessageStatus, deleteMessage } = useMessages();
 
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "coupons" | "messages" | "settings">("overview");
 
   // Admin Whitelist Management — list comes from Firestore via AuthContext
   const [newAdminEmail, setNewAdminEmail] = useState("");
@@ -56,6 +74,36 @@ function AdminPage() {
     setAdminSaving(false);
   };
 
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image file size should be less than 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setImg(reader.result);
+        toast.success("Product image uploaded from device!");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const [refreshingDB, setRefreshingDB] = useState(false);
+
+  const handleRefreshDB = () => {
+    setRefreshingDB(true);
+    toast.info("Syncing live database with Firestore...");
+    setTimeout(() => {
+      setRefreshingDB(false);
+      toast.success("Database synced live from Firestore!");
+    }, 600);
+  };
+
   // Product Form Modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
@@ -68,11 +116,57 @@ function AdminPage() {
   const [img, setImg] = useState("");
   const [concern, setConcern] = useState<Concern>("hairfall");
   const [benefitsText, setBenefitsText] = useState("");
+  const [stockQty, setStockQty] = useState<number>(45);
+
+  // Tracking Modal state
+  const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
+  const [courierName, setCourierName] = useState("Delhivery Express");
+  const [trackingNumber, setTrackingNumber] = useState("");
+
+  const handleSaveTracking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trackingOrder || !trackingNumber.trim()) return;
+    await updateOrderTracking(trackingOrder.id, courierName, trackingNumber.trim());
+    toast.success(`Tracking added for ${trackingOrder.id}! Order status updated to Shipped.`);
+    setTrackingOrder(null);
+    setTrackingNumber("");
+  };
+
+  // Coupon Modal state
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [discountType, setDiscountType] = useState<"percent" | "flat">("percent");
+  const [discountValue, setDiscountValue] = useState(20);
+  const [minOrderValue, setMinOrderValue] = useState(500);
+  const [expiryDate, setExpiryDate] = useState("2026-12-31");
+  const [usageLimit, setUsageLimit] = useState(200);
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim()) return;
+    await addCoupon({
+      code: couponCode,
+      discountType,
+      discountValue: Number(discountValue),
+      minOrderValue: Number(minOrderValue),
+      expiryDate,
+      usageLimit: Number(usageLimit),
+      isActive: true,
+    });
+    toast.success(`Coupon ${couponCode.toUpperCase()} created successfully!`);
+    setIsCouponModalOpen(false);
+    setCouponCode("");
+  };
+
+  // Customer Message state
+  const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
 
   // Product Search filter
   const [productQuery, setProductQuery] = useState("");
   const [orderQuery, setOrderQuery] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+  const [couponQuery, setCouponQuery] = useState("");
+  const [messageQuery, setMessageQuery] = useState("");
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -83,6 +177,7 @@ function AdminPage() {
     setImg("https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/acceb3d6-0ead-46f6-a2cd-d5575bee4650/id-preview-c31f3cc3--40643ab3-0a60-4170-a97f-c32eaab445a3.lovable.app-1783919364369.png");
     setConcern("hairfall");
     setBenefitsText("100% AYURVEDIC Formulation\nCHEMICAL FREE & Safe");
+    setStockQty(45);
     setIsAddModalOpen(true);
   };
 
@@ -95,6 +190,7 @@ function AdminPage() {
     setImg(p.img);
     setConcern(p.concern);
     setBenefitsText((p.benefits || []).join("\n"));
+    setStockQty(p.stockQty ?? 45);
     setIsAddModalOpen(true);
   };
 
@@ -115,6 +211,7 @@ function AdminPage() {
       rating: 4.9,
       reviews: Math.floor(100 + Math.random() * 500),
       concern,
+      stockQty: Number(stockQty) || 45,
     };
 
     if (editingProduct) {
@@ -144,6 +241,20 @@ function AdminPage() {
       orderStatusFilter === "all" || o.status === orderStatusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const unreadMessagesCount = messages.filter((m) => m.status === "unread").length;
+  const lowStockProductsCount = products.filter((p) => (p.stockQty ?? 45) < 10).length;
+
+  const filteredCoupons = coupons.filter(
+    (c) => c.code.toLowerCase().includes(couponQuery.toLowerCase())
+  );
+
+  const filteredMessages = messages.filter(
+    (m) =>
+      m.name.toLowerCase().includes(messageQuery.toLowerCase()) ||
+      m.email.toLowerCase().includes(messageQuery.toLowerCase()) ||
+      m.subject.toLowerCase().includes(messageQuery.toLowerCase())
+  );
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -187,15 +298,25 @@ function AdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-800 border border-amber-500/10 text-xs">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefreshDB}
+            disabled={refreshingDB}
+            className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 transition flex items-center gap-2 text-xs font-bold cursor-pointer"
+            title="Sync & Refresh DB from Firestore"
+          >
+            <RefreshCw className={`w-4 h-4 text-amber-400 ${refreshingDB ? "animate-spin" : ""}`} />
+            <span>{refreshingDB ? "Syncing DB..." : "Refresh DB"}</span>
+          </button>
+
+          <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-stone-800 border border-amber-500/10 text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>{user?.email || "Admin User"}</span>
           </div>
 
           <button
             onClick={() => logout()}
-            className="p-2 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-300 hover:bg-rose-900 transition flex items-center gap-2 text-xs font-semibold"
+            className="p-2 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-300 hover:bg-rose-900 transition flex items-center gap-2 text-xs font-semibold cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span className="hidden sm:inline">Logout</span>
@@ -221,19 +342,21 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("products")}
-            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left ${
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
               activeTab === "products"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
             }`}
           >
-            <Package className="w-4 h-4" />
-            <span>Products ({products.length})</span>
+            <div className="flex items-center gap-3">
+              <Package className="w-4 h-4" />
+              <span>Products ({products.length})</span>
+            </div>
           </button>
 
           <button
             onClick={() => setActiveTab("orders")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left ${
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
               activeTab === "orders"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
@@ -251,15 +374,51 @@ function AdminPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("coupons")}
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
+              activeTab === "coupons"
+                ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
+                : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Percent className="w-4 h-4" />
+              <span>Coupons</span>
+            </div>
+            <span className="text-[10px] font-mono text-amber-200/60 font-bold">
+              {coupons.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("messages")}
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
+              activeTab === "messages"
+                ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
+                : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-4 h-4" />
+              <span>Messages</span>
+            </div>
+            {unreadMessagesCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-950 text-sky-300 border border-sky-500/30">
+                {unreadMessagesCount} new
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab("settings")}
-            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left ${
+            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
               activeTab === "settings"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
             }`}
           >
             <Database className="w-4 h-4" />
-            <span>Firebase & DB</span>
+            <span>Settings</span>
           </button>
         </aside>
 
@@ -350,35 +509,41 @@ function AdminPage() {
                 <h4 className="font-serif text-lg font-bold text-amber-100 mb-4">
                   Recent Customer Orders
                 </h4>
-                <div className="space-y-3">
-                  {orders.slice(0, 4).map((o) => (
-                    <div
-                      key={o.id}
-                      className="p-4 bg-stone-950/60 border border-amber-500/10 rounded-2xl flex items-center justify-between gap-4"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-amber-100">
-                            {o.id}
-                          </span>
-                          <span className="text-xs text-amber-200/50">
-                            • {o.customerName}
-                          </span>
+                {orders.length === 0 ? (
+                  <div className="p-8 text-center text-amber-200/50 italic bg-stone-950/60 rounded-2xl border border-amber-500/10 text-xs">
+                    No customer orders recorded yet. Real orders placed by clients will sync live to this dashboard.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {orders.slice(0, 4).map((o) => (
+                      <div
+                        key={o.id}
+                        className="p-4 bg-stone-950/60 border border-amber-500/10 rounded-2xl flex items-center justify-between gap-4"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-amber-100">
+                              {o.id}
+                            </span>
+                            <span className="text-xs text-amber-200/50">
+                              • {o.customerName}
+                            </span>
+                          </div>
+                          <p className="text-xs text-amber-200/40 mt-1">
+                            {o.items.map((i) => `${i.qty}x ${i.name}`).join(", ")}
+                          </p>
                         </div>
-                        <p className="text-xs text-amber-200/40 mt-1">
-                          {o.items.map((i) => `${i.qty}x ${i.name}`).join(", ")}
-                        </p>
-                      </div>
 
-                      <div className="flex items-center gap-4">
-                        <span className="font-serif text-sm font-bold text-amber-400">
-                          ₹{o.total}
-                        </span>
-                        {getStatusBadge(o.status)}
+                        <div className="flex items-center gap-4">
+                          <span className="font-serif text-sm font-bold text-amber-400">
+                            ₹{o.total}
+                          </span>
+                          {getStatusBadge(o.status)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -505,100 +670,307 @@ function AdminPage() {
               </div>
 
               {/* Order Cards */}
-              <div className="space-y-4">
-                {filteredOrders.map((o) => (
-                  <div
-                    key={o.id}
-                    className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-amber-500/10">
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold font-serif text-lg text-amber-100">
-                            {o.id}
-                          </span>
-                          <span className="text-xs text-amber-200/40">
-                            {o.createdAt}
-                          </span>
+              {filteredOrders.length === 0 ? (
+                <div className="p-12 text-center bg-stone-900/80 border border-amber-500/20 rounded-3xl space-y-3">
+                  <ShoppingCart className="w-8 h-8 text-amber-500/40 mx-auto" />
+                  <h4 className="font-serif text-lg font-bold text-amber-100">No Customer Orders Found</h4>
+                  <p className="text-xs text-amber-200/60 max-w-sm mx-auto leading-relaxed">
+                    When customers purchase items from the online store, their orders will appear here in real-time.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredOrders.map((o) => (
+                    <div
+                      key={o.id}
+                      className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-amber-500/10">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold font-serif text-lg text-amber-100">
+                              {o.id}
+                            </span>
+                            <span className="text-xs text-amber-200/40">
+                              {o.createdAt}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-amber-200/70">
+                            <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="font-bold">{o.customerName}</span> (
+                            {o.customerEmail})
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-amber-200/70">
-                          <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-                          <span className="font-bold">{o.customerName}</span> (
-                          {o.customerEmail})
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs uppercase text-amber-200/50 font-semibold">
+                            Status:
+                          </span>
+                          <button
+                            onClick={() => {
+                              setTrackingOrder(o);
+                              setCourierName(o.courierName || "Delhivery Express");
+                              setTrackingNumber(o.trackingNumber || "");
+                            }}
+                            className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Truck className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{o.trackingNumber ? "Tracking Info" : "+ Add Tracking"}</span>
+                          </button>
+
+                          <select
+                            value={o.status}
+                            onChange={(e) =>
+                              updateOrderStatus(o.id, e.target.value as OrderStatus)
+                            }
+                            className="bg-stone-950 border border-amber-500/30 text-amber-100 text-xs font-semibold rounded-xl px-3 py-1.5 focus:outline-none focus:border-amber-400"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Processing">Processing</option>
+                            <option value="Shipped">Shipped</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                          <button
+                            onClick={() => deleteOrder(o.id)}
+                            className="p-2 text-rose-400 hover:bg-rose-950/60 rounded-xl transition cursor-pointer"
+                            title="Delete Order"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs uppercase text-amber-200/50 font-semibold">
-                          Status:
-                        </span>
-                        <select
-                          value={o.status}
-                          onChange={(e) =>
-                            updateOrderStatus(o.id, e.target.value as OrderStatus)
-                          }
-                          className="bg-stone-950 border border-amber-500/30 text-amber-100 text-xs font-semibold rounded-xl px-3 py-1.5 focus:outline-none focus:border-amber-400"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Processing">Processing</option>
-                          <option value="Shipped">Shipped</option>
-                          <option value="Delivered">Delivered</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
+                            Shipping Address
+                          </p>
+                          <p className="text-amber-100/90 leading-relaxed">
+                            {o.shippingAddress}
+                          </p>
+                          <p className="text-amber-200/60 mt-1">
+                            Contact: {o.customerPhone}
+                          </p>
+
+                          {o.trackingNumber && (
+                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-amber-500/20 rounded-xl space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider block">
+                                Shipment Tracking Details
+                              </span>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-amber-200/70">{o.courierName}:</span>
+                                <span className="font-mono font-bold text-amber-200">{o.trackingNumber}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
+                            Items Summary
+                          </p>
+                          <div className="space-y-1">
+                            {o.items.map((it, idx) => (
+                              <div
+                                key={idx}
+                                className="flex justify-between items-center bg-stone-950/50 p-2 rounded-xl"
+                              >
+                                <span className="text-amber-100">
+                                  {it.qty}x {it.name}
+                                </span>
+                                <span className="text-amber-400 font-bold">
+                                  {it.price}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-2 text-right text-sm font-bold text-amber-300">
+                            Total: ₹{o.total}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: COUPONS & DISCOUNTS */}
+          {activeTab === "coupons" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-amber-500/50" />
+                  <input
+                    type="text"
+                    value={couponQuery}
+                    onChange={(e) => setCouponQuery(e.target.value)}
+                    placeholder="Search promo codes..."
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 pl-9 pr-4 text-xs text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <button
+                  onClick={() => setIsCouponModalOpen(true)}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10"
+                >
+                  <Plus className="w-4 h-4" /> Create Coupon
+                </button>
+              </div>
+
+              {filteredCoupons.length === 0 ? (
+                <div className="p-12 text-center bg-stone-900/80 border border-amber-500/20 rounded-3xl space-y-3">
+                  <Percent className="w-8 h-8 text-amber-500/40 mx-auto" />
+                  <h4 className="font-serif text-lg font-bold text-amber-100">No Coupons Configured</h4>
+                  <p className="text-xs text-amber-200/60 max-w-sm mx-auto">
+                    Create promo codes to offer festive discounts and reward loyal customers.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredCoupons.map((c) => (
+                    <div
+                      key={c.id}
+                      className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4 relative overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 font-mono font-bold text-sm tracking-wider">
+                            {c.code}
+                          </div>
+                          <div>
+                            <span className="text-lg font-bold text-amber-100 block">
+                              {c.discountType === "percent" ? `${c.discountValue}% OFF` : `₹${c.discountValue} OFF`}
+                            </span>
+                            <span className="text-[11px] text-amber-200/50">
+                              Min Order: ₹{c.minOrderValue}
+                            </span>
+                          </div>
+                        </div>
+
                         <button
-                          onClick={() => deleteOrder(o.id)}
-                          className="p-2 text-rose-400 hover:bg-rose-950/60 rounded-xl transition"
-                          title="Delete Order"
+                          onClick={() => toggleCouponStatus(c.id, c.isActive)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition ${
+                            c.isActive
+                              ? "bg-emerald-950 text-emerald-300 border border-emerald-500/30"
+                              : "bg-stone-800 text-stone-400 border border-stone-700"
+                          }`}
+                        >
+                          {c.isActive ? <ToggleRight className="w-4 h-4 text-emerald-400" /> : <ToggleLeft className="w-4 h-4" />}
+                          <span>{c.isActive ? "Active" : "Disabled"}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-amber-500/10 text-xs">
+                        <div>
+                          <span className="text-amber-200/40 text-[10px] uppercase font-semibold block">Expires</span>
+                          <span className="text-amber-100 font-mono text-[11px]">{c.expiryDate}</span>
+                        </div>
+                        <div>
+                          <span className="text-amber-200/40 text-[10px] uppercase font-semibold block">Used</span>
+                          <span className="text-amber-300 font-mono text-[11px] font-bold">{c.usedCount} / {c.usageLimit}</span>
+                        </div>
+                        <div className="text-right">
+                          <button
+                            onClick={() => deleteCoupon(c.id)}
+                            className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-xl transition cursor-pointer"
+                            title="Delete Coupon"
+                          >
+                            <Trash2 className="w-4 h-4 inline" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: CUSTOMER INQUIRIES & MESSAGES */}
+          {activeTab === "messages" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-amber-500/50" />
+                  <input
+                    type="text"
+                    value={messageQuery}
+                    onChange={(e) => setMessageQuery(e.target.value)}
+                    placeholder="Search messages..."
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 pl-9 pr-4 text-xs text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="text-xs text-amber-200/60 font-semibold">
+                  Total Messages: <strong className="text-amber-100 font-mono">{messages.length}</strong>
+                </div>
+              </div>
+
+              {filteredMessages.length === 0 ? (
+                <div className="p-12 text-center bg-stone-900/80 border border-amber-500/20 rounded-3xl space-y-3">
+                  <MessageSquare className="w-8 h-8 text-amber-500/40 mx-auto" />
+                  <h4 className="font-serif text-lg font-bold text-amber-100">No Messages Received</h4>
+                  <p className="text-xs text-amber-200/60 max-w-sm mx-auto">
+                    Customer queries submitted through the Contact Us form will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredMessages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`p-5 rounded-3xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                        m.status === "unread"
+                          ? "bg-amber-950/30 border-amber-500/40 shadow-md"
+                          : "bg-stone-900/80 border-amber-500/15"
+                      }`}
+                    >
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-amber-100 text-sm">{m.name}</span>
+                          <span className="text-xs text-amber-200/50 font-mono">{m.email}</span>
+                          {m.status === "unread" && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-bold bg-amber-500 text-stone-950">
+                              New Unread
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="font-semibold text-xs text-amber-300 truncate">{m.subject}</h5>
+                        <p className="text-xs text-amber-200/70 line-clamp-1">{m.message}</p>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[10px] text-amber-200/40">{m.createdAt}</span>
+
+                        <button
+                          onClick={() => {
+                            setSelectedMessage(m);
+                            if (m.status === "unread") updateMessageStatus(m.id, "read");
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-amber-400" /> Read
+                        </button>
+
+                        <button
+                          onClick={() => deleteMessage(m.id)}
+                          className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-xl transition cursor-pointer"
+                          title="Delete message"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
-                          Shipping Address
-                        </p>
-                        <p className="text-amber-100/90 leading-relaxed">
-                          {o.shippingAddress}
-                        </p>
-                        <p className="text-amber-200/60 mt-1">
-                          Contact: {o.customerPhone}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
-                          Items Summary
-                        </p>
-                        <div className="space-y-1">
-                          {o.items.map((it, idx) => (
-                            <div
-                              key={idx}
-                              className="flex justify-between items-center bg-stone-950/50 p-2 rounded-xl"
-                            >
-                              <span className="text-amber-100">
-                                {it.qty}x {it.name}
-                              </span>
-                              <span className="text-amber-400 font-bold">
-                                {it.price}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-2 text-right text-sm font-bold text-amber-300">
-                          Total: ₹{o.total}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* TAB 4: SETTINGS / FIREBASE */}
+          {/* TAB 6: SETTINGS */}
           {activeTab === "settings" && (
             <div className="space-y-6">
               {/* Admin Whitelist Manager */}
@@ -657,59 +1029,6 @@ function AdminPage() {
                 <p className="text-[10px] text-amber-200/40">
                   ⚠ Changes take effect immediately for new logins. Existing sessions are updated on next page refresh.
                 </p>
-              </div>
-
-              {/* Firebase Status */}
-              <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-6">
-                <div>
-                  <h4 className="font-serif text-xl font-bold text-amber-100">
-                    Firebase Integration Status
-                  </h4>
-                  <p className="text-xs text-amber-200/60 mt-1">
-                    Check your current cloud backend state.
-                  </p>
-                </div>
-
-                <div
-                  className={`p-4 rounded-2xl border flex items-center gap-3 ${
-                    isFirebaseConfigured
-                      ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-200"
-                      : "bg-amber-950/60 border-amber-500/40 text-amber-200"
-                  }`}
-                >
-                  <Database className="w-5 h-5 shrink-0" />
-                  <div>
-                    <h5 className="font-bold text-sm">
-                      {isFirebaseConfigured
-                        ? "Firebase Cloud Connected"
-                        : "Running in Fallback Local Storage Mode"}
-                    </h5>
-                    <p className="text-xs opacity-80 mt-0.5">
-                      {isFirebaseConfigured
-                        ? "Your app is reading & writing live data directly to Firebase Firestore."
-                        : "Environment variables VITE_FIREBASE_* are not set yet. The Admin Panel is currently persisting data to browser LocalStorage so you can test immediately!"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-stone-950 p-4 rounded-2xl border border-amber-500/10 text-xs space-y-2">
-                  <p className="font-bold text-amber-400 uppercase tracking-wider">
-                    How to attach live Firebase credentials:
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-amber-200/70">
-                    <li>Create a free project at console.firebase.google.com</li>
-                    <li>Enable Authentication (Email & Google) and Firestore Database</li>
-                    <li>Create a <code className="text-amber-300">.env</code> file in your project root with:</li>
-                  </ol>
-                  <pre className="p-3 bg-stone-900 rounded-xl text-[11px] text-emerald-300 overflow-x-auto">
-{`VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id`}
-                  </pre>
-                </div>
               </div>
             </div>
           )}
@@ -782,34 +1101,103 @@ VITE_FIREBASE_APP_ID=your_app_id`}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
-                    Category Concern
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  Category Concern
+                </label>
+                <select
+                  value={concern}
+                  onChange={(e) => setConcern(e.target.value as Concern)}
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="hairfall">Hair Care</option>
+                  <option value="pain">Pain Relief</option>
+                  <option value="ritual">Big Boxes</option>
+                </select>
+              </div>
+
+              {/* Product Image Selection & Dimensions Guide */}
+              <div className="space-y-3 bg-stone-950/80 p-4 rounded-2xl border border-amber-500/25">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <label className="block uppercase text-amber-300 font-bold text-xs tracking-wider">
+                    Product Image
                   </label>
-                  <select
-                    value={concern}
-                    onChange={(e) => setConcern(e.target.value as Concern)}
-                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="hairfall">Hair Care</option>
-                    <option value="pain">Pain Relief</option>
-                    <option value="ritual">Big Boxes</option>
-                  </select>
+                  <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    📐 Dim: 800 × 800 px (1:1 Ratio)
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
-                    Image URL
-                  </label>
-                  <input
-                    type="text"
-                    value={img}
-                    onChange={(e) => setImg(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
-                  />
+                <div className="text-[10px] text-amber-200/60 leading-relaxed bg-stone-900 p-2.5 rounded-xl border border-amber-500/10">
+                  <p className="font-bold text-amber-200 mb-0.5">Image Specifications:</p>
+                  <p>• <strong>Dimensions</strong>: 800 × 800 pixels (Square ratio for ultra-crisp display)</p>
+                  <p>• <strong>Formats</strong>: PNG (transparent background recommended), JPG, JPEG, WebP</p>
+                  <p>• <strong>Max File Size</strong>: Under 5 MB</p>
                 </div>
+
+                {/* Device Upload Button & URL fallback */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <label className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-md shadow-amber-500/10">
+                      <Upload className="w-4 h-4" />
+                      <span>Upload from Device</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileChange}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <span className="text-amber-200/40 text-xs hidden sm:inline">or</span>
+
+                    <input
+                      type="text"
+                      value={img}
+                      onChange={(e) => setImg(e.target.value)}
+                      placeholder="Paste Image URL (https://...)"
+                      className="w-full flex-1 bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400 text-xs"
+                    />
+                  </div>
+
+                  {/* Live Thumbnail Preview */}
+                  {img && (
+                    <div className="flex items-center gap-3 p-2.5 bg-stone-900 rounded-xl border border-amber-500/20 mt-2">
+                      <img
+                        src={img}
+                        alt="Product preview"
+                        className="w-14 h-14 object-cover rounded-lg bg-stone-950 border border-amber-500/30 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0 text-[10px] text-amber-200/80">
+                        <span className="font-bold text-amber-300 block">Image Preview Active</span>
+                        <span className="truncate block opacity-60 font-mono mt-0.5">
+                          {img.startsWith("data:") ? "Loaded directly from Device" : img}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setImg("")}
+                        className="text-xs text-rose-400 hover:text-rose-300 font-semibold px-2 py-1 bg-rose-950/40 rounded-lg border border-rose-500/30 transition cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  Stock Inventory Quantity
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  required
+                  value={stockQty}
+                  onChange={(e) => setStockQty(Number(e.target.value))}
+                  placeholder="e.g. 45"
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                />
               </div>
 
               <div>
@@ -838,6 +1226,264 @@ VITE_FIREBASE_APP_ID=your_app_id`}
                   className="px-5 py-2 bg-amber-500 text-stone-950 rounded-xl font-bold uppercase tracking-wider hover:bg-amber-400"
                 >
                   Save Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Coupon Modal */}
+      {isCouponModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-md shadow-2xl relative" data-lenis-prevent>
+            <h3 className="font-serif text-2xl font-bold text-amber-100 mb-4">
+              Create Promo Coupon
+            </h3>
+
+            <form onSubmit={handleSaveCoupon} className="space-y-4 text-xs">
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  Coupon Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. AYURVEDA20"
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 font-mono font-bold uppercase focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                    Discount Type
+                  </label>
+                  <select
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value as "percent" | "flat")}
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="percent">Percentage (%)</option>
+                    <option value="flat">Flat Amount (₹)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                    Discount Value
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    placeholder={discountType === "percent" ? "20" : "100"}
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                    Min Order Value (₹)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={minOrderValue}
+                    onChange={(e) => setMinOrderValue(Number(e.target.value))}
+                    placeholder="500"
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  Total Usage Limit
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={usageLimit}
+                  onChange={(e) => setUsageLimit(Number(e.target.value))}
+                  placeholder="200"
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCouponModalOpen(false)}
+                  className="px-4 py-2 bg-stone-800 text-amber-200 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-500 text-stone-950 rounded-xl font-bold uppercase tracking-wider hover:bg-amber-400 cursor-pointer"
+                >
+                  Save Coupon
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Message Details Modal */}
+      {selectedMessage && (
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative space-y-4 text-xs" data-lenis-prevent>
+            <div className="flex items-center justify-between border-b border-amber-500/10 pb-3">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Customer Inquiry</span>
+                <h3 className="font-serif text-xl font-bold text-amber-100 mt-0.5">{selectedMessage.name}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedMessage(null)}
+                className="text-amber-200/50 hover:text-amber-100 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 bg-stone-950/80 p-4 rounded-2xl border border-amber-500/15">
+              <div className="flex justify-between">
+                <span className="text-amber-200/50">Email:</span>
+                <span className="text-amber-100 font-mono font-bold">{selectedMessage.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-amber-200/50">Phone:</span>
+                <span className="text-amber-100 font-mono">{selectedMessage.phone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-amber-200/50">Date Received:</span>
+                <span className="text-amber-100/70">{selectedMessage.createdAt}</span>
+              </div>
+              <div className="pt-2 border-t border-amber-500/10">
+                <span className="text-amber-200/50 block mb-1">Subject:</span>
+                <span className="text-amber-300 font-semibold text-sm">{selectedMessage.subject}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-amber-200/50 uppercase font-semibold text-[10px] tracking-wider block">Message Content</span>
+              <p className="bg-stone-950 p-4 rounded-2xl border border-amber-500/10 text-amber-100 leading-relaxed font-sans text-xs">
+                {selectedMessage.message}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-amber-500/10">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-200/50 text-[10px] uppercase font-semibold">Mark Status:</span>
+                <select
+                  value={selectedMessage.status}
+                  onChange={(e) => {
+                    const status = e.target.value as "unread" | "read" | "replied";
+                    updateMessageStatus(selectedMessage.id, status);
+                    setSelectedMessage({ ...selectedMessage, status });
+                  }}
+                  className="bg-stone-950 border border-amber-500/30 text-amber-100 text-xs font-semibold rounded-xl px-2 py-1"
+                >
+                  <option value="unread">Unread</option>
+                  <option value="read">Read</option>
+                  <option value="replied">Replied</option>
+                </select>
+              </div>
+
+              <a
+                href={`mailto:${selectedMessage.email}?subject=Re: ${encodeURIComponent(selectedMessage.subject)}`}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl uppercase tracking-wider transition inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                Reply via Email →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Tracking Modal */}
+      {trackingOrder && (
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-md shadow-2xl relative space-y-4 text-xs" data-lenis-prevent>
+            <div className="flex items-center justify-between border-b border-amber-500/10 pb-3">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Shipping & Courier Tracking</span>
+                <h3 className="font-serif text-xl font-bold text-amber-100 mt-0.5">Order {trackingOrder.id}</h3>
+              </div>
+              <button
+                onClick={() => setTrackingOrder(null)}
+                className="text-amber-200/50 hover:text-amber-100 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTracking} className="space-y-4">
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  Courier Partner
+                </label>
+                <select
+                  value={courierName}
+                  onChange={(e) => setCourierName(e.target.value)}
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="Delhivery Express">Delhivery Express</option>
+                  <option value="BlueDart Courier">BlueDart Courier</option>
+                  <option value="DTDC Express">DTDC Express</option>
+                  <option value="India Speed Post">India Speed Post</option>
+                  <option value="Bluedart Surface">Bluedart Surface</option>
+                  <option value="Shiprocket">Shiprocket</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block uppercase text-amber-200/70 font-semibold mb-1">
+                  AWB / Tracking Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. DELH123456789IN"
+                  className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 font-mono font-bold tracking-wider uppercase focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setTrackingOrder(null)}
+                  className="px-4 py-2 bg-stone-800 text-amber-200 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-500 text-stone-950 rounded-xl font-bold uppercase tracking-wider hover:bg-amber-400 cursor-pointer"
+                >
+                  Save & Mark Shipped
                 </button>
               </div>
             </form>

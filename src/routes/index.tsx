@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
@@ -1115,6 +1115,7 @@ function CartDrawer() {
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-label="Shopping cart"
+        data-lenis-prevent
       >
         <div className="flex items-center justify-between px-6 py-6 border-b border-gold/20">
           <div className="font-display text-2xl text-forest">Your Bag</div>
@@ -1127,7 +1128,7 @@ function CartDrawer() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6" data-lenis-prevent>
           {orderSuccess ? (
             <div className="p-6 bg-emerald-950/10 border border-emerald-800/30 rounded-3xl text-center space-y-3">
               <div className="text-3xl">🎉</div>
@@ -1270,10 +1271,12 @@ function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }
     <div
       className="fixed inset-0 z-[80] bg-forest-deep/60 backdrop-blur-sm flex items-start justify-center pt-28 px-6"
       onClick={onClose}
+      data-lenis-prevent
     >
       <div
         className="w-full max-w-xl bg-ivory rounded-[2rem] border border-gold/30 shadow-luxe p-6"
         onClick={(e) => e.stopPropagation()}
+        data-lenis-prevent
       >
         <div className="flex items-center gap-3 border-b border-gold/20 pb-4">
           <SearchIcon />
@@ -1292,7 +1295,7 @@ function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }
             ✕
           </button>
         </div>
-        <div className="mt-4 max-h-80 overflow-y-auto divide-y divide-gold/10">
+        <div className="mt-4 max-h-80 overflow-y-auto divide-y divide-gold/10" data-lenis-prevent>
           {results.map((p) => (
             <button
               key={p.name}
@@ -1792,8 +1795,8 @@ function Process() {
               <p className="mt-2 text-sm text-ivory/65">{s.d}</p>
             </div>
           ))}
-          <div className="rounded-3xl overflow-hidden relative min-h-[220px] hidden lg:block">
-            <img src={painOilAsset.url} alt="Product" className="w-full h-full object-cover" />
+          <div className="rounded-3xl overflow-hidden relative min-h-[220px] hidden lg:block border border-gold/25">
+            <img src={tyPainOilLifestyle} alt="Thakur Yograj Ayurvedic Pain Relief Oil" className="w-full h-full object-cover" />
           </div>
         </div>
       </div>
@@ -2392,6 +2395,7 @@ function FinalCTA() {
 function Footer() {
   const { setConcern } = useContext(ConcernContext);
   const [subscribeEmail, setSubscribeEmail] = useState("");
+  const navigate = useNavigate();
   const whatsappUrl = "https://wa.me/918959568262?text=Hello%20Thakur%20Yograj%20Ayurveda%2C%20I%20have%20a%20query%20about%20your%20products.";
 
   const handleSubscribeSubmit = (e: React.FormEvent) => {
@@ -2424,13 +2428,15 @@ function Footer() {
     } else if (l === "whatsapp") {
       window.open(whatsappUrl, "_blank", "noopener,noreferrer");
     } else if (l === "contact") {
-      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      navigate({ to: "/contact" });
     } else if (l === "shipping") {
-      toast.info("Shipping Information: Free shipping across India on orders above ₹499. Orders are shipped via Bluedart and delivered within 3-5 business days.");
+      navigate({ to: "/shipping" });
     } else if (l === "returns") {
-      toast.info("Return Policy: We offer a 15-day return policy for unused and unopened products. Contact us via WhatsApp to initiate a return.");
-    } else if (l === "privacy" || l === "terms") {
-      toast.info(`${label}: We prioritize customer data security. We do not sell or share your personal details with third-party networks.`);
+      navigate({ to: "/returns" });
+    } else if (l === "privacy") {
+      navigate({ to: "/privacy" });
+    } else if (l === "terms") {
+      navigate({ to: "/terms" });
     } else if (l === "instagram") {
       toast.info("Follow us on Instagram: @ThakurYograjAyurveda (Official handle coming soon!)");
     }
@@ -2489,12 +2495,12 @@ function Footer() {
             <a href="#" onClick={(e) => handleFooterLink("WhatsApp", e)} className="hover:text-gold cursor-pointer transition">
               WhatsApp
             </a>
-            <a href="#" onClick={(e) => handleFooterLink("Privacy", e)} className="hover:text-gold cursor-pointer transition">
+            <Link to="/privacy" className="hover:text-gold cursor-pointer transition">
               Privacy
-            </a>
-            <a href="#" onClick={(e) => handleFooterLink("Terms", e)} className="hover:text-gold cursor-pointer transition">
+            </Link>
+            <Link to="/terms" className="hover:text-gold cursor-pointer transition">
               Terms
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -3179,8 +3185,8 @@ function KnowledgeHub() {
 
       {/* Article Reader Modal */}
       {selectedArticle && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md">
-          <div className="relative w-full max-w-3xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md" data-lenis-prevent>
+          <div className="relative w-full max-w-3xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" data-lenis-prevent>
             
             {/* Header image banner */}
             <div className="relative h-48 md:h-64 shrink-0 bg-cream">
@@ -3203,7 +3209,7 @@ function KnowledgeHub() {
             </div>
 
             {/* Scrollable content panel */}
-            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-8 space-y-6">
+            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-8 space-y-6" data-lenis-prevent>
               <div>
                 <span className="text-[10px] tracking-wider text-forest/50 font-semibold">{selectedArticle.time}</span>
                 <h3 className="font-display text-3xl md:text-4xl text-forest mt-2 font-bold leading-tight">
@@ -3713,8 +3719,8 @@ function DoshaQuizModal() {
   const activeProduct = getProductObj(dominant);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl p-8 md:p-12 overflow-hidden max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md" data-lenis-prevent>
+      <div className="relative w-full max-w-2xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl p-8 md:p-12 overflow-hidden max-h-[90vh] flex flex-col" data-lenis-prevent>
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-24 h-24 bg-gold/5 rounded-full blur-xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-32 h-32 bg-forest/5 rounded-full blur-xl pointer-events-none" />

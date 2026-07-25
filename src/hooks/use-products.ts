@@ -30,7 +30,20 @@ export interface ProductItem {
   rating: number;
   reviews: number;
   concern: Concern;
+  stockQty?: number;
   createdAt?: unknown;
+}
+
+export function resolveProductImage(img: string | undefined, name: string): string {
+  if (!img || img.includes("/__l5e/") || img.includes("acceb3d6-0ead-46f6-a2cd-d5575bee4650")) {
+    const isPain = name.toLowerCase().includes("pain") || name.toLowerCase().includes("dard");
+    const isDuo = name.toLowerCase().includes("big box") || name.toLowerCase().includes("duo") || name.toLowerCase().includes("combo");
+    if (isPain) {
+      return isDuo ? tyPainOilDuo : tyPainOil;
+    }
+    return isDuo ? tyHairOilDuo : tyHairOil;
+  }
+  return img;
 }
 
 export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [
@@ -50,6 +63,7 @@ export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [
     rating: 4.9,
     reviews: 2148,
     concern: "hairfall",
+    stockQty: 48,
   },
   {
     name: "Dard Nivarak Tel",
@@ -67,6 +81,7 @@ export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [
     rating: 4.8,
     reviews: 1642,
     concern: "pain",
+    stockQty: 4,
   },
   {
     name: "Herbal Hair Oil - Big Box",
@@ -84,6 +99,7 @@ export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [
     rating: 4.9,
     reviews: 812,
     concern: "ritual",
+    stockQty: 24,
   },
   {
     name: "Dard Nivarak Tel - Big Box",
@@ -96,11 +112,12 @@ export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [
       "2 x 250ml Bottles Included",
       "100% NATURALLY EFFECTIVE",
       "PAIN & INFLAMMATION RELIEF",
-      "RAPID ACTION Constant Care",
+      "RAPID ACTION on Joints",
     ],
     rating: 4.8,
-    reviews: 954,
+    reviews: 539,
     concern: "ritual",
+    stockQty: 18,
   },
 ];
 
@@ -121,10 +138,14 @@ export function useProducts() {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const fetched: ProductItem[] = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...(doc.data() as Omit<ProductItem, "id">),
-          }));
+          const fetched: ProductItem[] = snapshot.docs.map((doc) => {
+            const data = doc.data() as Omit<ProductItem, "id">;
+            return {
+              id: doc.id,
+              ...data,
+              img: resolveProductImage(data.img, data.name),
+            };
+          });
           if (fetched.length === 0) {
             // Initial seed
             setProducts(
@@ -152,14 +173,11 @@ export function useProducts() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const hasOldUrls = parsed.some((p: any) =>
-          p.img?.includes("acceb3d6-0ead-46f6-a2cd-d5575bee4650")
-        );
-        if (hasOldUrls) {
-          setDefaultProductsLocal();
-        } else {
-          setProducts(parsed);
-        }
+        const resolved = parsed.map((p: any) => ({
+          ...p,
+          img: resolveProductImage(p.img, p.name),
+        }));
+        setProducts(resolved);
       } catch {
         setDefaultProductsLocal();
       }
@@ -227,11 +245,22 @@ export function useProducts() {
     }
   };
 
+  const seedProductsToFirestore = async () => {
+    if (!isFirebaseConfigured || !db) return;
+    for (const p of DEFAULT_PRODUCTS) {
+      await addDoc(collection(db, "products"), {
+        ...p,
+        createdAt: serverTimestamp(),
+      });
+    }
+  };
+
   return {
     products,
     loading,
     addProduct,
     updateProduct,
     deleteProduct,
+    seedProductsToFirestore,
   };
 }

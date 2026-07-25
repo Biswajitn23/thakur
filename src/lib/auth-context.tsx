@@ -104,7 +104,7 @@ interface AuthContextType {
   isAdmin: boolean;
   adminEmails: string[];
   login: (email: string, pass: string, rememberMe?: boolean) => Promise<void>;
-  signup: (email: string, pass: string, name: string) => Promise<void>;
+  signup: (email: string, pass: string, name: string, rememberMe?: boolean) => Promise<void>;
   loginWithGoogle: (rememberMe?: boolean) => Promise<void>;
   loginWithFacebook: (rememberMe?: boolean) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -253,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Auth methods ────────────────────────────────────────────────────────────
-  const login = async (email: string, pass: string, rememberMe = false) => {
+  const login = async (email: string, pass: string, rememberMe = true) => {
     if (isFirebaseConfigured && auth) {
       const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
       await setPersistence(auth, persistence);
@@ -280,8 +280,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, pass: string, name: string) => {
+  const signup = async (email: string, pass: string, name: string, rememberMe = true) => {
     if (isFirebaseConfigured && auth) {
+      const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
+      await setPersistence(auth, persistence);
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(cred.user, { displayName: name });
       const role: UserRole = isAdminEmail(email, adminEmailsRef.current) ? "admin" : "customer";
@@ -304,7 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async (rememberMe = false) => {
+  const loginWithGoogle = async (rememberMe = true) => {
     if (isFirebaseConfigured && auth) {
       const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
       await setPersistence(auth, persistence);
@@ -319,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginWithFacebook = async (rememberMe = false) => {
+  const loginWithFacebook = async (rememberMe = true) => {
     if (isFirebaseConfigured && auth) {
       const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
       await setPersistence(auth, persistence);

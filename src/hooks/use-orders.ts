@@ -29,6 +29,8 @@ export interface OrderItem {
   total: number;
   status: OrderStatus;
   createdAt: string;
+  courierName?: string;
+  trackingNumber?: string;
 }
 
 const LOCAL_STORAGE_ORDERS_KEY = "thakur_custom_orders";
@@ -81,7 +83,7 @@ const INITIAL_DEMO_ORDERS: OrderItem[] = [
 ];
 
 export function useOrders() {
-  const [orders, setOrders] = useState<OrderItem[]>(INITIAL_DEMO_ORDERS);
+  const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,11 +96,7 @@ export function useOrders() {
             id: doc.id,
             ...(doc.data() as Omit<OrderItem, "id">),
           }));
-          if (fetched.length === 0) {
-            setOrders(INITIAL_DEMO_ORDERS);
-          } else {
-            setOrders(fetched);
-          }
+          setOrders(fetched);
           setLoading(false);
         },
         (error) => {
@@ -117,18 +115,17 @@ export function useOrders() {
     const saved = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
     if (saved) {
       try {
-        setOrders(JSON.parse(saved));
+        const parsed: OrderItem[] = JSON.parse(saved);
+        const realOnly = parsed.filter((o) => !o.id.startsWith("ORD-928"));
+        setOrders(realOnly);
+        localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(realOnly));
       } catch {
-        setOrders(INITIAL_DEMO_ORDERS);
+        setOrders([]);
+        localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify([]));
       }
     } else {
-      setOrders(INITIAL_DEMO_ORDERS);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          LOCAL_STORAGE_ORDERS_KEY,
-          JSON.stringify(INITIAL_DEMO_ORDERS)
-        );
-      }
+      setOrders([]);
+      localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify([]));
     }
     setLoading(false);
   };
@@ -189,11 +186,39 @@ export function useOrders() {
     }
   };
 
+  const updateOrderTracking = async (id: string, courierName: string, trackingNumber: string) => {
+    if (isFirebaseConfigured && db) {
+      const docRef = doc(db, "orders", id);
+      await updateDoc(docRef, { courierName, trackingNumber, status: "Shipped" });
+    } else {
+      const updated = orders.map((o) =>
+        o.id === id ? { ...o, courierName, trackingNumber, status: "Shipped" as OrderStatus } : o
+      );
+      setOrders(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(updated));
+      }
+    }
+  };
+
+  const seedOrdersToFirestore = async () => {
+    if (!isFirebaseConfigured || !db) return;
+    for (const o of INITIAL_DEMO_ORDERS) {
+      const { id, ...payload } = o;
+      await addDoc(collection(db, "orders"), {
+        ...payload,
+        serverTimestamp: serverTimestamp(),
+      });
+    }
+  };
+
   return {
     orders,
     loading,
     createOrder,
     updateOrderStatus,
+    updateOrderTracking,
     deleteOrder,
+    seedOrdersToFirestore,
   };
 }
