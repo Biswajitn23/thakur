@@ -563,12 +563,12 @@ function FullCheckoutPage() {
 
             {/* RIGHT COLUMN (5 Cols): Order Summary & Detailed Price Breakdown */}
             <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-28">
-              <div className="bg-white rounded-[2rem] p-6 border border-[#cfa860]/40 shadow-xl space-y-5">
-                <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="bg-[#fdf8ee] rounded-[2rem] p-6 border-2 border-[#cfa860]/60 shadow-2xl shadow-amber-900/10 space-y-5">
+                <div className="flex items-center justify-between border-b-2 border-[#cfa860]/30 pb-3">
                   <h3 className="font-serif text-xl font-bold text-[#082a1c] flex items-center gap-2">
-                    <ShoppingBag className="w-5 h-5 text-[#082a1c]" /> Order Summary
+                    <ShoppingBag className="w-5 h-5 text-[#cfa860]" /> Order Summary
                   </h3>
-                  <span className="text-xs font-bold text-[#082a1c] bg-amber-500/15 px-3 py-1 rounded-full border border-[#cfa860]/30">
+                  <span className="text-xs font-bold text-[#082a1c] bg-[#cfa860]/25 px-3 py-1 rounded-full border border-[#cfa860]/50">
                     {items.reduce((acc, i) => acc + i.qty, 0)} Items
                   </span>
                 </div>
