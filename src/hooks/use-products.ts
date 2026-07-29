@@ -35,7 +35,7 @@ export interface ProductItem {
 }
 
 export function resolveProductImage(img: string | undefined, name: string): string {
-  if (!img || img.includes("/__l5e/") || img.includes("acceb3d6-0ead-46f6-a2cd-d5575bee4650")) {
+  if (!img) {
     const isPain = name.toLowerCase().includes("pain") || name.toLowerCase().includes("dard");
     const isDuo = name.toLowerCase().includes("big box") || name.toLowerCase().includes("duo") || name.toLowerCase().includes("combo");
     if (isPain) {
@@ -43,7 +43,20 @@ export function resolveProductImage(img: string | undefined, name: string): stri
     }
     return isDuo ? tyHairOilDuo : tyHairOil;
   }
-  return img;
+
+  // If it's a remote URL (like Firebase Storage), use it directly
+  if (img.startsWith("http://") || img.startsWith("https://") || img.startsWith("data:")) {
+    return img;
+  }
+
+  // Otherwise, it's a dev asset path (e.g. starting with /assets/, /src/assets/, relative paths, or Lovable placeholders)
+  // Resolve it to the hashed production build asset imports
+  const isPain = name.toLowerCase().includes("pain") || name.toLowerCase().includes("dard");
+  const isDuo = name.toLowerCase().includes("big box") || name.toLowerCase().includes("duo") || name.toLowerCase().includes("combo");
+  if (isPain) {
+    return isDuo ? tyPainOilDuo : tyPainOil;
+  }
+  return isDuo ? tyHairOilDuo : tyHairOil;
 }
 
 export const DEFAULT_PRODUCTS: Omit<ProductItem, "id">[] = [

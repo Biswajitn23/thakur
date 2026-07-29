@@ -92,7 +92,7 @@ export function useOrders() {
 
   const createOrder = async (
     orderData: Omit<OrderItem, "id" | "createdAt" | "status">
-  ) => {
+  ): Promise<string> => {
     const newOrderPayload = {
       ...orderData,
       status: "Pending" as OrderStatus,
@@ -104,10 +104,11 @@ export function useOrders() {
     };
 
     if (isFirebaseConfigured && db) {
-      await addDoc(collection(db, "orders"), {
+      const docRef = await addDoc(collection(db, "orders"), {
         ...newOrderPayload,
         serverTimestamp: serverTimestamp(),
       });
+      return docRef.id;
     } else {
       const newOrder: OrderItem = {
         ...newOrderPayload,
@@ -118,6 +119,7 @@ export function useOrders() {
       if (typeof window !== "undefined") {
         localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(updated));
       }
+      return newOrder.id;
     }
   };
 

@@ -50,12 +50,7 @@ const ConcernContext = createContext<{
   setConcern: (c: Concern) => void;
 }>({ concern: "all", setConcern: () => { } });
 
-/* ---------------- CART (shared state) ---------------- */
-export type CartItem = { name: string; price: string; img: string; qty: number };
 
-function parsePrice(price: string) {
-  return Number(price.replace(/[^\d.]/g, "")) || 0;
-}
 
 function animateFlyToCart(imgSrc: string, startEl: HTMLElement) {
   const target = document.getElementById("cart-btn-desktop");
@@ -100,6 +95,8 @@ function animateFlyToCart(imgSrc: string, startEl: HTMLElement) {
     }, 450);
   });
 }
+
+import { useCartContext, type CartItem, parsePrice } from "@/context/cart-context";
 
 export const CartContext = createContext<{
   items: CartItem[];
@@ -147,39 +144,27 @@ function Index() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [concern, setConcern] = useState<Concern>("all");
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [isCartOpen, setCartOpen] = useState(false);
   const [isSearchOpen, setSearchOpen] = useState(false);
-  const [wishlist, setWishlist] = useState<CartItem[]>([]);
-  const [isWishlistOpen, setWishlistOpen] = useState(false);
-  const [isQuizOpen, setQuizOpen] = useState(false);
 
-  // Sync user-specific cart from localStorage on user change
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (user?.uid) {
-      const userCartKey = `thakur_cart_${user.uid}`;
-      const savedCart = localStorage.getItem(userCartKey);
-      if (savedCart) {
-        try {
-          setItems(JSON.parse(savedCart));
-        } catch {
-          setItems([]);
-        }
-      } else {
-        setItems([]);
-      }
-    } else {
-      setItems([]);
-    }
-  }, [user?.uid]);
-
-  // Persist cart to user-specific localStorage key
-  useEffect(() => {
-    if (typeof window === "undefined" || !user?.uid) return;
-    const userCartKey = `thakur_cart_${user.uid}`;
-    localStorage.setItem(userCartKey, JSON.stringify(items));
-  }, [items, user?.uid]);
+  const {
+    items,
+    addItem: globalAddItem,
+    removeItem,
+    setQty,
+    isOpen: isCartOpen,
+    openCart,
+    closeCart,
+    count,
+    subtotal,
+    wishlist,
+    toggleWishlist,
+    isWishlistOpen,
+    openWishlist,
+    closeWishlist,
+    isQuizOpen,
+    openQuiz,
+    closeQuiz,
+  } = useCartContext();
 
   function addItem(
     p: { name: string; price: string; img: string },
@@ -192,56 +177,19 @@ function Index() {
       return;
     }
 
-    setItems((prev) => {
-      const existing = prev.find((i) => i.name === p.name);
-      if (existing) return prev.map((i) => (i.name === p.name ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { ...p, qty: 1 }];
-    });
+    globalAddItem(p, false);
+
     if (clickEvent) {
       animateFlyToCart(p.img, clickEvent.currentTarget);
       if (openCartAfter) {
         setTimeout(() => {
-          setCartOpen(true);
+          openCart();
         }, 950);
       }
     } else if (openCartAfter) {
-      setCartOpen(true);
+      openCart();
     }
   }
-
-  function removeItem(name: string) {
-    setItems((prev) => prev.filter((i) => i.name !== name));
-  }
-
-  function setQty(name: string, qty: number) {
-    if (qty <= 0) {
-      setItems((prev) => prev.filter((i) => i.name !== name));
-    } else {
-      setItems((prev) => prev.map((i) => (i.name === name ? { ...i, qty } : i)));
-    }
-  }
-
-  function toggleWishlist(p: { name: string; price: string; img: string }) {
-    if (!user) {
-      toast.error("Please log in to save items to your wishlist.");
-      navigate({ to: "/login" });
-      return;
-    }
-
-    setWishlist((prev) => {
-      const existing = prev.find((item) => item.name === p.name);
-      if (existing) {
-        toast.success(`Removed "${p.name}" from your wishlist.`);
-        return prev.filter((item) => item.name !== p.name);
-      } else {
-        toast.success(`Added "${p.name}" to your wishlist.`);
-        return [...prev, { name: p.name, price: p.price, img: p.img, qty: 1 }];
-      }
-    });
-  }
-
-  const count = items.reduce((s, i) => s + i.qty, 0);
-  const subtotal = items.reduce((s, i) => s + parsePrice(i.price) * i.qty, 0);
 
   return (
     <ConcernContext.Provider value={{ concern, setConcern }}>
@@ -252,18 +200,18 @@ function Index() {
           removeItem,
           setQty,
           isOpen: isCartOpen,
-          openCart: () => setCartOpen(true),
-          closeCart: () => setCartOpen(false),
+          openCart,
+          closeCart,
           count,
           subtotal,
           wishlist,
           toggleWishlist,
           isWishlistOpen,
-          openWishlist: () => setWishlistOpen(true),
-          closeWishlist: () => setWishlistOpen(false),
+          openWishlist,
+          closeWishlist,
           isQuizOpen,
-          openQuiz: () => setQuizOpen(true),
-          closeQuiz: () => setQuizOpen(false),
+          openQuiz,
+          closeQuiz,
         }}
       >
         <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -293,12 +241,12 @@ function Index() {
           <FAQ />
           <FinalCTA />
           <Footer />
+          <CartDrawer />
+          <WishlistDrawer />
+          <DoshaQuizModal />
+          <WhatsAppFloat />
+          <SearchOverlay open={isSearchOpen} onClose={() => setSearchOpen(false)} />
         </div>
-        <CartDrawer />
-        <WishlistDrawer />
-        <DoshaQuizModal />
-        <WhatsAppFloat />
-        <SearchOverlay open={isSearchOpen} onClose={() => setSearchOpen(false)} />
       </CartContext.Provider>
     </ConcernContext.Provider>
   );
@@ -2989,18 +2937,21 @@ function Footer() {
 
         <div className="mt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-forest/55">
           <div>© {new Date().getFullYear()} Thakur Yograj Ayurveda · Made in India</div>
-          <div className="flex items-center gap-6 tracking-widest uppercase">
-            <a href="#" onClick={(e) => handleFooterLink("Instagram", e)} className="hover:text-gold cursor-pointer transition">
-              Instagram
-            </a>
-            <a href="#" onClick={(e) => handleFooterLink("WhatsApp", e)} className="hover:text-gold cursor-pointer transition">
-              WhatsApp
-            </a>
-            <Link to="/privacy" className="hover:text-gold cursor-pointer transition">
-              Privacy
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-x-6 gap-y-2 tracking-widest uppercase text-[10px]">
+            <Link to="/contact" className="hover:text-gold cursor-pointer transition">
+              Contact Us
+            </Link>
+            <Link to="/shipping" className="hover:text-gold cursor-pointer transition">
+              Shipping Policy
+            </Link>
+            <Link to="/returns" className="hover:text-gold cursor-pointer transition">
+              Refunds & Cancellations
             </Link>
             <Link to="/terms" className="hover:text-gold cursor-pointer transition">
-              Terms
+              Terms & Conditions
+            </Link>
+            <Link to="/privacy" className="hover:text-gold cursor-pointer transition">
+              Privacy Policy
             </Link>
           </div>
         </div>

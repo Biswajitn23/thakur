@@ -45,6 +45,7 @@ function FullCheckoutPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
 
   // Promo Coupon state
   const [couponCodeInput, setCouponCodeInput] = useState("");
@@ -168,7 +169,7 @@ function FullCheckoutPage() {
     }));
 
     if (paymentMethod === "COD") {
-      await createOrder({
+      const orderId = await createOrder({
         customerName: name,
         customerEmail: email,
         customerPhone: phone,
@@ -180,12 +181,10 @@ function FullCheckoutPage() {
         userId: user.uid,
       });
 
+      setPlacedOrderId(orderId);
       setOrderSuccess(true);
+      clearCart();
       toast.success("Order placed successfully via Cash on Delivery!");
-      setTimeout(() => {
-        clearCart();
-        navigate({ to: "/" });
-      }, 2500);
       return;
     }
 
@@ -229,7 +228,7 @@ function FullCheckoutPage() {
 
       const isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
 
-      await createOrder({
+      const orderId = await createOrder({
         customerName: name,
         customerEmail: email,
         customerPhone: phone,
@@ -243,12 +242,10 @@ function FullCheckoutPage() {
         userId: user.uid,
       });
 
-      toast.success("Payment completed successfully!");
+      setPlacedOrderId(orderId);
       setOrderSuccess(true);
-      setTimeout(() => {
-        clearCart();
-        navigate({ to: "/" });
-      }, 2500);
+      clearCart();
+      toast.success("Payment completed successfully!");
     } catch (err: any) {
       console.error("Cashfree checkout error:", err);
       const errMsg = err?.message || "Payment could not be completed. Please try again.";
@@ -346,6 +343,12 @@ function FullCheckoutPage() {
             <p className="text-sm text-stone-600 leading-relaxed">
               Thank you for choosing Thakur Yograj Ayurveda. Your order confirmation and payment details have been saved under your account (<strong>{user?.email}</strong>).
             </p>
+            {placedOrderId && (
+              <div className="py-3 px-5 bg-stone-50 border border-stone-150 rounded-2xl inline-flex flex-col items-center gap-1">
+                <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Your Order ID</span>
+                <span className="font-mono text-[#082a1c] font-extrabold text-base select-all tracking-wider">{placedOrderId}</span>
+              </div>
+            )}
             <div className="pt-4 border-t border-stone-100">
               <Link
                 to="/"
