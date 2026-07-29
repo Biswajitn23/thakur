@@ -210,6 +210,8 @@ function FullCheckoutPage() {
         throw new Error("Unable to load Cashfree checkout SDK. Please try again.");
       }
 
+      console.log("[Cashfree SDK] Initializing checkout with session ID:", res.paymentSessionId);
+
       // Launch Cashfree Checkout Modal
       const checkoutResult = await cashfree.checkout({
         paymentSessionId: res.paymentSessionId,
@@ -413,7 +415,7 @@ function FullCheckoutPage() {
                           placeholder="Your Full Name"
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
-                          className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-sm sm:text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition"
+                          className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition"
                         />
                       </div>
 
@@ -427,7 +429,7 @@ function FullCheckoutPage() {
                           placeholder="Email Address"
                           value={customerEmail}
                           onChange={(e) => setCustomerEmail(e.target.value)}
-                          className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-sm sm:text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition"
+                          className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition"
                         />
                       </div>
                     </div>
@@ -444,7 +446,7 @@ function FullCheckoutPage() {
                         placeholder="10-Digit Mobile Number (e.g. 9876543210)"
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d]/g, ""))}
-                        className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-sm sm:text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition font-mono"
+                        className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition font-mono"
                       />
                     </div>
 
@@ -459,7 +461,7 @@ function FullCheckoutPage() {
                         placeholder="House / Flat No., Building, Street Name, Landmark, City, State & 6-digit Pincode"
                         value={shippingAddress}
                         onChange={(e) => setShippingAddress(e.target.value)}
-                        className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-sm sm:text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition leading-relaxed"
+                        className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition leading-relaxed"
                       />
                     </div>
                   </div>
@@ -611,7 +613,7 @@ function FullCheckoutPage() {
                         placeholder="Promo Code (e.g. AYURVEDA20)"
                         value={couponCodeInput}
                         onChange={(e) => setCouponCodeInput(e.target.value)}
-                        className="flex-1 p-3 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-sm sm:text-base font-semibold focus:bg-white focus:ring-2 focus:ring-[#082a1c]/20 uppercase font-mono transition"
+                        className="flex-1 p-3 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:ring-2 focus:ring-[#082a1c]/20 uppercase font-mono transition"
                       />
                       <button
                         type="submit"

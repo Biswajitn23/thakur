@@ -64,6 +64,12 @@ export const createCashfreeOrderFn = createServerFn({ method: "POST" })
     try {
       const baseUrl = getBaseUrl();
       const headers = getHeaders();
+      
+      console.log(
+        "[Cashfree PG Debug] Connecting to:", baseUrl,
+        "| AppID prefix:", headers["x-client-id"]?.substring(0, 8),
+        "| SecretKey prefix:", headers["x-client-secret"]?.substring(0, 8)
+      );
 
       // Clean phone number: remove non-digits, default to 10 digits
       const sanitizedPhone =

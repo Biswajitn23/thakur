@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
 
 export type CartItem = { name: string; price: string; img: string; qty: number };
 
@@ -39,51 +41,120 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [isWishlistOpen, setWishlistOpen] = useState(false);
   const [isQuizOpen, setQuizOpen] = useState(false);
 
-  // Sync user-specific cart from localStorage on user change
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (user?.uid) {
-      const userCartKey = `thakur_cart_${user.uid}`;
-      const savedCart = localStorage.getItem(userCartKey);
-      if (savedCart) {
-        try {
-          setItems(JSON.parse(savedCart));
-        } catch {
-          setItems([]);
-        }
-      } else {
-        setItems([]);
-      }
+  // Use refs to prevent save-before-load race conditions
+  const cartLoadedRef = useRef(false);
+  const wishlistLoadedRef = useRef(false);
+  const activeUserIdRef = useRef<string | null>(null);
 
-      const userWishlistKey = `thakur_wishlist_${user.uid}`;
-      const savedWishlist = localStorage.getItem(userWishlistKey);
-      if (savedWishlist) {
-        try {
-          setWishlist(JSON.parse(savedWishlist));
-        } catch {
-          setWishlist([]);
-        }
-      } else {
-        setWishlist([]);
-      }
-    } else {
+  // Reset loaded status on user login/logout
+  useEffect(() => {
+    if (user?.uid !== activeUserIdRef.current) {
+      activeUserIdRef.current = user?.uid || null;
+      cartLoadedRef.current = false;
+      wishlistLoadedRef.current = false;
       setItems([]);
       setWishlist([]);
     }
   }, [user?.uid]);
 
-  // Save cart to localStorage
+  // 1. LOAD cart and wishlist from Firestore (with LocalStorage fallback)
   useEffect(() => {
-    if (typeof window === "undefined" || !user?.uid) return;
+    if (typeof window === "undefined") return;
+    if (!user?.uid) {
+      setItems([]);
+      setWishlist([]);
+      return;
+    }
+
+    const loadData = async () => {
+      const userId = user.uid;
+
+      // --- Cart Load ---
+      let loadedCart: CartItem[] = [];
+      const userCartKey = `thakur_cart_${userId}`;
+      const localCart = localStorage.getItem(userCartKey);
+      if (localCart) {
+        try {
+          loadedCart = JSON.parse(localCart);
+        } catch {
+          loadedCart = [];
+        }
+      }
+
+      if (isFirebaseConfigured && db) {
+        try {
+          const cartDoc = await getDoc(doc(db, "carts", userId));
+          if (cartDoc.exists()) {
+            loadedCart = cartDoc.data().items || [];
+          } else {
+            // Seed Firestore with local cart if it exists
+            await setDoc(doc(db, "carts", userId), { items: loadedCart }, { merge: true });
+          }
+        } catch (err) {
+          console.warn("Firestore cart read error, fallback to local:", err);
+        }
+      }
+      setItems(loadedCart);
+      cartLoadedRef.current = true;
+
+      // --- Wishlist Load ---
+      let loadedWishlist: CartItem[] = [];
+      const userWishlistKey = `thakur_wishlist_${userId}`;
+      const localWishlist = localStorage.getItem(userWishlistKey);
+      if (localWishlist) {
+        try {
+          loadedWishlist = JSON.parse(localWishlist);
+        } catch {
+          loadedWishlist = [];
+        }
+      }
+
+      if (isFirebaseConfigured && db) {
+        try {
+          const wishlistDoc = await getDoc(doc(db, "wishlists", userId));
+          if (wishlistDoc.exists()) {
+            loadedWishlist = wishlistDoc.data().items || [];
+          } else {
+            // Seed Firestore with local wishlist
+            await setDoc(doc(db, "wishlists", userId), { items: loadedWishlist }, { merge: true });
+          }
+        } catch (err) {
+          console.warn("Firestore wishlist read error, fallback to local:", err);
+        }
+      }
+      setWishlist(loadedWishlist);
+      wishlistLoadedRef.current = true;
+    };
+
+    loadData();
+  }, [user?.uid]);
+
+  // 2. SAVE cart changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !user?.uid || !cartLoadedRef.current) return;
+
     const userCartKey = `thakur_cart_${user.uid}`;
     localStorage.setItem(userCartKey, JSON.stringify(items));
+
+    if (isFirebaseConfigured && db) {
+      setDoc(doc(db, "carts", user.uid), { items }, { merge: true }).catch((err) =>
+        console.warn("Failed to save cart to Firestore:", err)
+      );
+    }
   }, [items, user?.uid]);
 
-  // Save wishlist to localStorage
+  // 3. SAVE wishlist changes
   useEffect(() => {
-    if (typeof window === "undefined" || !user?.uid) return;
+    if (typeof window === "undefined" || !user?.uid || !wishlistLoadedRef.current) return;
+
     const userWishlistKey = `thakur_wishlist_${user.uid}`;
     localStorage.setItem(userWishlistKey, JSON.stringify(wishlist));
+
+    if (isFirebaseConfigured && db) {
+      setDoc(doc(db, "wishlists", user.uid), { items: wishlist }, { merge: true }).catch((err) =>
+        console.warn("Failed to save wishlist to Firestore:", err)
+      );
+    }
   }, [wishlist, user?.uid]);
 
   function addItem(p: { name: string; price: string; img: string }, openCartAfter: boolean = false) {

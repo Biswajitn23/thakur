@@ -10,6 +10,8 @@ export async function getCashfreeInstance(): Promise<Cashfree | null> {
       | "sandbox"
       | "production";
 
+    console.log("[Cashfree SDK] Initializing frontend load mode:", mode);
+
     cashfreeInstancePromise = load({ mode }).catch((err: any) => {
       console.error("Failed to load Cashfree JS SDK:", err);
       cashfreeInstancePromise = null;
