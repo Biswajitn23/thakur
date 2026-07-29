@@ -125,6 +125,7 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 import { AuthProvider } from "../lib/auth-context";
+import { CartProvider } from "../context/cart-context";
 import { Toaster } from "sonner";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
@@ -163,11 +164,13 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <SmoothScroll>
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
-        </SmoothScroll>
-        <Toaster position="top-center" richColors closeButton />
+        <CartProvider>
+          <SmoothScroll>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+          </SmoothScroll>
+          <Toaster position="top-center" richColors closeButton />
+        </CartProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

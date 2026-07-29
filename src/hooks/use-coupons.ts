@@ -26,30 +26,6 @@ export interface CouponItem {
 
 const LOCAL_STORAGE_COUPONS_KEY = "thakur_custom_coupons";
 
-const INITIAL_COUPONS: CouponItem[] = [
-  {
-    id: "coup-1",
-    code: "AYURVEDA20",
-    discountType: "percent",
-    discountValue: 20,
-    minOrderValue: 999,
-    expiryDate: "2026-12-31",
-    usageLimit: 500,
-    usedCount: 42,
-    isActive: true,
-  },
-  {
-    id: "coup-2",
-    code: "FIRST100",
-    discountType: "flat",
-    discountValue: 100,
-    minOrderValue: 500,
-    expiryDate: "2026-09-30",
-    usageLimit: 200,
-    usedCount: 88,
-    isActive: true,
-  },
-];
 
 export function useCoupons() {
   const [coupons, setCoupons] = useState<CouponItem[]>([]);
@@ -142,23 +118,11 @@ export function useCoupons() {
     }
   };
 
-  const seedCouponsToFirestore = async () => {
-    if (!isFirebaseConfigured || !db) return;
-    for (const c of INITIAL_COUPONS) {
-      const { id, ...payload } = c;
-      await addDoc(collection(db, "coupons"), {
-        ...payload,
-        createdAt: serverTimestamp(),
-      });
-    }
-  };
-
   return {
     coupons,
     loading,
     addCoupon,
     toggleCouponStatus,
     deleteCoupon,
-    seedCouponsToFirestore,
   };
 }

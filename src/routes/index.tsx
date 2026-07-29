@@ -4,6 +4,10 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useProducts, type ProductItem } from "@/hooks/use-products";
 import { useOrders } from "@/hooks/use-orders";
+import { useCoupons } from "@/hooks/use-coupons";
+import { useStoreSettings } from "@/hooks/use-store-settings";
+import { createCashfreeOrderFn, verifyCashfreeOrderFn } from "@/lib/cashfree-server";
+import { getCashfreeInstance } from "@/lib/cashfree";
 import painOilAsset from "@/assets/pain-oil.asset.json";
 import hairOilBoxAsset from "@/assets/hair-oil-box.asset.json";
 import lifestyleHairAsset from "@/assets/lifestyle-hair.asset.json";
@@ -47,7 +51,7 @@ const ConcernContext = createContext<{
 }>({ concern: "all", setConcern: () => { } });
 
 /* ---------------- CART (shared state) ---------------- */
-type CartItem = { name: string; price: string; img: string; qty: number };
+export type CartItem = { name: string; price: string; img: string; qty: number };
 
 function parsePrice(price: string) {
   return Number(price.replace(/[^\d.]/g, "")) || 0;
@@ -64,18 +68,17 @@ function animateFlyToCart(imgSrc: string, startEl: HTMLElement) {
   const img = document.createElement("img");
   img.src = imgSrc;
   img.style.position = "fixed";
-  img.style.left = `${startRect.left + startRect.width / 2}px`;
-  img.style.top = `${startRect.top + startRect.height / 2}px`;
-  img.style.width = "64px";
-  img.style.height = "64px";
-  img.style.borderRadius = "50%";
+  img.style.left = `${startRect.left + startRect.width / 2 - 24}px`;
+  img.style.top = `${startRect.top + startRect.height / 2 - 24}px`;
+  img.style.width = "48px";
+  img.style.height = "48px";
+  img.style.borderRadius = "12px";
   img.style.objectFit = "cover";
-  img.style.zIndex = "99999";
+  img.style.zIndex = "9999";
   img.style.pointerEvents = "none";
-  img.style.transform = "translate(-50%, -50%) scale(1)";
-  img.style.transition = "all 0.9s cubic-bezier(0.25, 1, 0.5, 1)";
-  img.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.25)";
-  img.style.border = "2px solid #cfa860";
+  img.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  img.style.border = "1px solid rgba(212,175,55,0.4)";
+  img.style.transition = "all 0.65s cubic-bezier(0.2, 0.8, 0.2, 1)";
 
   document.body.appendChild(img);
 
@@ -98,7 +101,7 @@ function animateFlyToCart(imgSrc: string, startEl: HTMLElement) {
   });
 }
 
-const CartContext = createContext<{
+export const CartContext = createContext<{
   items: CartItem[];
   addItem: (
     p: { name: string; price: string; img: string },
@@ -141,6 +144,8 @@ const CartContext = createContext<{
 });
 
 function Index() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [concern, setConcern] = useState<Concern>("all");
   const [items, setItems] = useState<CartItem[]>([]);
   const [isCartOpen, setCartOpen] = useState(false);
@@ -149,11 +154,44 @@ function Index() {
   const [isWishlistOpen, setWishlistOpen] = useState(false);
   const [isQuizOpen, setQuizOpen] = useState(false);
 
+  // Sync user-specific cart from localStorage on user change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (user?.uid) {
+      const userCartKey = `thakur_cart_${user.uid}`;
+      const savedCart = localStorage.getItem(userCartKey);
+      if (savedCart) {
+        try {
+          setItems(JSON.parse(savedCart));
+        } catch {
+          setItems([]);
+        }
+      } else {
+        setItems([]);
+      }
+    } else {
+      setItems([]);
+    }
+  }, [user?.uid]);
+
+  // Persist cart to user-specific localStorage key
+  useEffect(() => {
+    if (typeof window === "undefined" || !user?.uid) return;
+    const userCartKey = `thakur_cart_${user.uid}`;
+    localStorage.setItem(userCartKey, JSON.stringify(items));
+  }, [items, user?.uid]);
+
   function addItem(
     p: { name: string; price: string; img: string },
     clickEvent?: React.MouseEvent<HTMLElement>,
     openCartAfter: boolean = false
   ) {
+    if (!user) {
+      toast.error("Please log in to your account to add items to your shopping bag.");
+      navigate({ to: "/login" });
+      return;
+    }
+
     setItems((prev) => {
       const existing = prev.find((i) => i.name === p.name);
       if (existing) return prev.map((i) => (i.name === p.name ? { ...i, qty: i.qty + 1 } : i));
@@ -170,13 +208,26 @@ function Index() {
       setCartOpen(true);
     }
   }
+
   function removeItem(name: string) {
     setItems((prev) => prev.filter((i) => i.name !== name));
   }
+
   function setQty(name: string, qty: number) {
-    setItems((prev) => prev.map((i) => (i.name === name ? { ...i, qty: Math.max(1, qty) } : i)));
+    if (qty <= 0) {
+      setItems((prev) => prev.filter((i) => i.name !== name));
+    } else {
+      setItems((prev) => prev.map((i) => (i.name === name ? { ...i, qty } : i)));
+    }
   }
+
   function toggleWishlist(p: { name: string; price: string; img: string }) {
+    if (!user) {
+      toast.error("Please log in to save items to your wishlist.");
+      navigate({ to: "/login" });
+      return;
+    }
+
     setWishlist((prev) => {
       const existing = prev.find((item) => item.name === p.name);
       if (existing) {
@@ -188,6 +239,7 @@ function Index() {
       }
     });
   }
+
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + parsePrice(i.price) * i.qty, 0);
 
@@ -327,7 +379,7 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
             Journal
           </a>
         </nav>
-        
+
         <div className="flex items-center gap-2 sm:gap-3 lg:gap-4">
           <button
             aria-label="Search"
@@ -369,50 +421,77 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
             <div className="relative">
               <button
                 onClick={() => setProfileDropdownOpen(!isProfileDropdownOpen)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gold/30 text-forest hover:bg-gold/10 text-xs font-semibold tracking-wider uppercase transition shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full border border-gold/40 bg-gradient-to-r from-forest/5 via-gold/10 to-forest/5 text-forest hover:border-gold hover:shadow-md transition shrink-0 cursor-pointer group"
               >
-                <UserIcon />
-                <span className="hidden xl:inline">
-                  {user.role === "admin" ? "Admin Panel" : user.displayName || "Account"}
+                <div className="relative w-7 h-7 rounded-full bg-forest text-gold font-bold text-xs grid place-items-center border border-gold/40 shadow-inner group-hover:scale-105 transition-transform">
+                  {user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email ? user.email.charAt(0).toUpperCase() : "U"}
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-ivory" />
+                </div>
+                <span className="hidden xl:inline text-xs font-bold tracking-wider uppercase text-forest">
+                  {user.role === "admin" ? "👑 Admin" : user.displayName || "Account"}
                 </span>
+                <span className="text-[10px] text-forest/50 font-bold group-hover:text-gold transition">▼</span>
               </button>
+
               {isProfileDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setProfileDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gold/25 bg-ivory shadow-luxe p-4 z-20 space-y-3 text-left">
-                    <div className="border-b border-gold/10 pb-2">
-                      <div className="font-semibold text-xs text-forest">
-                        {user.displayName || "Valued Member"}
+                  <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-gold/30 bg-ivory shadow-2xl p-4 z-20 space-y-3.5 text-left backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center gap-3 border-b border-gold/15 pb-3">
+                      <div className="w-10 h-10 rounded-full bg-forest text-gold font-bold text-sm grid place-items-center border border-gold/40 shadow-md shrink-0">
+                        {user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email ? user.email.charAt(0).toUpperCase() : "U"}
                       </div>
-                      <div className="text-[10px] text-forest/65 truncate mt-0.5">
-                        {user.email}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs text-forest truncate">
+                          {user.displayName || "Valued Member"}
+                        </div>
+                        <div className="text-[10px] text-forest/65 truncate">
+                          {user.email}
+                        </div>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                          user.role === "admin"
+                            ? "bg-gold/20 text-gold-dark border border-gold/30"
+                            : "bg-emerald-500/15 text-emerald-800 border border-emerald-500/30"
+                        }`}>
+                          {user.role === "admin" ? "👑 Verified Admin" : "✦ Tribe Member"}
+                        </span>
                       </div>
                     </div>
-                    <Link
-                      to="/orders"
-                      onClick={() => setProfileDropdownOpen(false)}
-                      className="block w-full text-left text-xs font-semibold text-forest hover:text-gold transition"
-                    >
-                      My Orders
-                    </Link>
-                    {user.role === "admin" && (
+
+                    <div className="space-y-1.5 text-xs">
                       <Link
-                        to="/admin"
+                        to="/orders"
                         onClick={() => setProfileDropdownOpen(false)}
-                        className="block w-full text-left text-xs font-semibold text-forest hover:text-gold transition"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-forest hover:bg-forest/5 hover:text-gold transition font-semibold"
                       >
-                        Admin Dashboard
+                        <span>📜</span>
+                        <span>My Orders & History</span>
                       </Link>
-                    )}
-                    <button
-                      onClick={async () => {
-                        setProfileDropdownOpen(false);
-                        await logout();
-                      }}
-                      className="block w-full text-left text-xs font-bold text-amber-800 hover:text-amber-900 transition cursor-pointer"
-                    >
-                      Sign Out
-                    </button>
+
+                      {user.role === "admin" && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl bg-forest text-ivory font-bold hover:bg-forest-deep transition shadow-sm"
+                        >
+                          <span>👑</span>
+                          <span>Admin Dashboard</span>
+                        </Link>
+                      )}
+                    </div>
+
+                    <div className="border-t border-gold/15 pt-2">
+                      <button
+                        onClick={async () => {
+                          setProfileDropdownOpen(false);
+                          await logout();
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-rose-700 hover:bg-rose-500/10 font-bold transition cursor-pointer text-xs"
+                      >
+                        <span>🚪</span>
+                        <span>Sign Out Account</span>
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -432,7 +511,7 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
           >
             Shop Now
           </a>
-          
+
           <button
             onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
             className="lg:hidden w-10 h-10 grid place-items-center rounded-full border border-gold/30 text-forest shrink-0 transition"
@@ -613,8 +692,8 @@ function Hero() {
                 <div
                   key={idx}
                   className={`col-start-1 row-start-1 transition-all duration-1000 ease-in-out flex flex-col justify-center ${isActive
-                      ? "opacity-100 translate-y-0 z-10 pointer-events-auto"
-                      : "opacity-0 translate-y-8 z-0 pointer-events-none"
+                    ? "opacity-100 translate-y-0 z-10 pointer-events-auto"
+                    : "opacity-0 translate-y-8 z-0 pointer-events-none"
                     }`}
                 >
                   <div className="inline-flex items-center gap-3 mb-8">
@@ -672,8 +751,8 @@ function Hero() {
                 <div
                   key={`img-${idx}`}
                   className={`col-start-1 row-start-1 w-full max-w-md px-6 transition-all duration-1000 ease-in-out ${isActive
-                      ? "opacity-100 scale-100 z-10 pointer-events-auto"
-                      : "opacity-0 scale-95 z-0 pointer-events-none"
+                    ? "opacity-100 scale-100 z-10 pointer-events-auto"
+                    : "opacity-0 scale-95 z-0 pointer-events-none"
                     }`}
                 >
                   <div className="relative">
@@ -784,19 +863,21 @@ function BotanicalCorner({ className = "" }: { className?: string }) {
   );
 }
 
-/* ---------------- TRUST BAR ---------------- */
-const TRUST_ITEMS = [
-  { icon: "🚚", label: "Free shipping over ₹799" },
-  { icon: "💵", label: "Cash on delivery available" },
-  { icon: "↩", label: "30-day easy returns" },
-  { icon: "🧪", label: "Every batch lab tested" },
-];
-
 function TrustBar() {
+  const { settings } = useStoreSettings();
+  const threshold = settings.freeShippingThreshold ?? 2500;
+
+  const trustItems = [
+    { icon: "🚚", label: `Free shipping over ₹${threshold}` },
+    { icon: "💵", label: settings.isCodEnabled ? "Cash on delivery available" : "Secure online payments" },
+    { icon: "↩", label: "30-day easy returns" },
+    { icon: "🧪", label: "Every batch lab tested" },
+  ];
+
   return (
     <section className="border-b border-gold/20 bg-forest text-ivory">
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {TRUST_ITEMS.map((t) => (
+        {trustItems.map((t) => (
           <div key={t.label} className="flex items-center gap-3 justify-center lg:justify-start">
             <span className="text-lg">{t.icon}</span>
             <span className="text-xs tracking-wide text-ivory/85">{t.label}</span>
@@ -1015,11 +1096,10 @@ function ProductCard({ product }: { product: ProductItem }) {
         <button
           aria-label="Wishlist"
           onClick={() => toggleWishlist(product)}
-          className={`absolute top-5 right-5 w-10 h-10 grid place-items-center rounded-full border transition cursor-pointer ${
-            isWishlisted
+          className={`absolute top-5 right-5 w-10 h-10 grid place-items-center rounded-full border transition cursor-pointer ${isWishlisted
               ? "bg-[#cfa860] border-[#cfa860] text-ivory"
               : "bg-ivory/95 border-gold/30 text-forest hover:bg-gold hover:text-ivory"
-          }`}
+            }`}
         >
           <HeartIcon fill={isWishlisted ? "currentColor" : "none"} />
         </button>
@@ -1039,7 +1119,7 @@ function ProductCard({ product }: { product: ProductItem }) {
 
         <div className="mt-6 flex items-end justify-between">
           <div>
-            <div className="font-display text-2xl text-forest">{product.price}</div>
+            <div className="text-2xl text-forest font-bold">{product.price}</div>
             <div className="text-xs text-forest/50 line-through">{product.old}</div>
           </div>
           <div className="flex gap-2">
@@ -1066,39 +1146,245 @@ function ProductCard({ product }: { product: ProductItem }) {
 function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, setQty, subtotal } = useContext(CartContext);
   const { createOrder } = useOrders();
-  const { user, logout } = useAuth();
+  const { coupons } = useCoupons();
+  const { settings: storeSettings } = useStoreSettings();
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"Cashfree" | "COD">("Cashfree");
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
+
+  // Auto switch from COD to Cashfree if COD disabled by admin
+  useEffect(() => {
+    if (!storeSettings.isCodEnabled && paymentMethod === "COD") {
+      setPaymentMethod("Cashfree");
+    }
+  }, [storeSettings.isCodEnabled, paymentMethod]);
+
+  // Promo Coupon state
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountValue: number;
+    discountType: "percent" | "flat";
+  } | null>(null);
+
+  // Auto pre-fill user profile info when logged in
+  useEffect(() => {
+    if (user) {
+      if (!customerName && user.displayName) setCustomerName(user.displayName);
+      if (!customerEmail && user.email) setCustomerEmail(user.email);
+    }
+  }, [user]);
+
+  // Calculate discount and final price breakdown
+  let discountAmount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.discountType === "percent") {
+      discountAmount = Math.round((subtotal * appliedCoupon.discountValue) / 100);
+    } else {
+      discountAmount = appliedCoupon.discountValue;
+    }
+  }
+
+  const deliveryFeeConfig = storeSettings.deliveryFee ?? 49;
+  const freeThresholdConfig = storeSettings.freeShippingThreshold ?? 2500;
+  const gstRate = storeSettings.gstPercentage ?? 18;
+  const isGstIncluded = storeSettings.isGstIncluded ?? true;
+
+  const shippingFee = subtotal >= freeThresholdConfig || subtotal === 0 ? 0 : deliveryFeeConfig;
+  const taxableBase = Math.max(0, subtotal - discountAmount);
+
+  const gstAmount = isGstIncluded
+    ? Math.round(taxableBase - taxableBase / (1 + gstRate / 100))
+    : Math.round((taxableBase * gstRate) / 100);
+
+  const finalTotal = isGstIncluded
+    ? Math.max(0, taxableBase + shippingFee)
+    : Math.max(0, taxableBase + gstAmount + shippingFee);
+
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCodeInput.trim()) return;
+
+    const matched = coupons.find(
+      (c) => c.code.toUpperCase() === couponCodeInput.trim().toUpperCase() && c.isActive
+    );
+
+    if (matched) {
+      if (subtotal < matched.minOrderValue) {
+        toast.error(`Minimum order amount for coupon ${matched.code} is ₹${matched.minOrderValue}.`);
+        return;
+      }
+      setAppliedCoupon({
+        code: matched.code,
+        discountValue: matched.discountValue,
+        discountType: matched.discountType,
+      });
+      toast.success(`Coupon "${matched.code}" applied successfully!`);
+      setCouponCodeInput("");
+    } else {
+      toast.error("Invalid or expired coupon code.");
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    toast.success("Coupon removed.");
+  };
+
+  const handleProceedToCheckout = () => {
+    if (!user) {
+      toast.error("Please log in to your account to proceed with checkout.");
+      closeCart();
+      navigate({ to: "/login" });
+      return;
+    }
+    closeCart();
+    navigate({ to: "/checkout" });
+  };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) return;
 
-    await createOrder({
-      customerName: customerName || user?.displayName || "Customer",
-      customerEmail: user?.email || "customer@example.com",
-      customerPhone: customerPhone || "+91 98765 43210",
-      shippingAddress: shippingAddress || "Default Delivery Address, India",
-      items: items.map((i) => ({
-        name: i.name,
-        price: i.price,
-        qty: i.qty,
-        img: i.img,
-      })),
-      total: subtotal,
-    });
-
-    setOrderSuccess(true);
-    setTimeout(() => {
-      items.forEach((i) => removeItem(i.name));
-      setIsCheckingOut(false);
-      setOrderSuccess(false);
+    if (!user) {
+      toast.error("You must be logged in to place an order.");
       closeCart();
-    }, 2500);
+      navigate({ to: "/login" });
+      return;
+    }
+
+    setPaymentError(null);
+
+    const cleanPhone = customerPhone.replace(/[^\d]/g, "");
+    if (cleanPhone.length < 10) {
+      const msg = "Please enter a valid 10-digit mobile phone number.";
+      setPaymentError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    if (!shippingAddress || shippingAddress.trim().length < 10) {
+      const msg = "Please enter a complete delivery address (street, city, state & 6-digit pincode).";
+      setPaymentError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const name = customerName.trim() || user.displayName || "Customer";
+    const email = customerEmail.trim() || user.email || "customer@example.com";
+    const phone = customerPhone.trim();
+    const address = shippingAddress.trim();
+
+    const orderPayloadItems = items.map((i) => ({
+      name: i.name,
+      price: i.price,
+      qty: i.qty,
+      img: i.img,
+    }));
+
+    if (paymentMethod === "COD") {
+      await createOrder({
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        shippingAddress: address,
+        items: orderPayloadItems,
+        total: finalTotal,
+        paymentMethod: "COD",
+        paymentStatus: "Pending",
+        userId: user.uid,
+      });
+
+      setOrderSuccess(true);
+      setTimeout(() => {
+        items.forEach((i) => removeItem(i.name));
+        setIsCheckingOut(false);
+        setOrderSuccess(false);
+        setAppliedCoupon(null);
+        closeCart();
+      }, 2500);
+      return;
+    }
+
+    // Cashfree Payment Flow
+    setIsProcessingPayment(true);
+    try {
+      const res = await createCashfreeOrderFn({
+        data: {
+          orderAmount: finalTotal,
+          customerName: name,
+          customerEmail: email,
+          customerPhone: phone,
+        },
+      });
+
+      if (!res.success || !res.paymentSessionId) {
+        throw new Error(res.error || "Failed to initialize payment order with Cashfree.");
+      }
+
+      const cashfree = await getCashfreeInstance();
+      if (!cashfree) {
+        throw new Error("Unable to load Cashfree checkout SDK. Please try again.");
+      }
+
+      // Launch Cashfree Checkout Modal
+      const checkoutResult = await cashfree.checkout({
+        paymentSessionId: res.paymentSessionId,
+        redirectTarget: "_modal",
+      });
+
+      if (checkoutResult?.error) {
+        throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
+      }
+
+      // Verify Order Status on Server
+      const verifyRes = await verifyCashfreeOrderFn({
+        data: { orderId: res.orderId || res.cfOrderId || "" },
+      });
+
+      const isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
+
+      await createOrder({
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        shippingAddress: address,
+        items: orderPayloadItems,
+        total: finalTotal,
+        paymentMethod: "Cashfree",
+        paymentStatus: isPaid ? "Paid" : "Pending",
+        cfOrderId: res.cfOrderId,
+        paymentId: res.orderId,
+        userId: user.uid,
+      });
+
+      toast.success("Payment completed successfully!");
+      setOrderSuccess(true);
+      setTimeout(() => {
+        items.forEach((i) => removeItem(i.name));
+        setIsCheckingOut(false);
+        setIsProcessingPayment(false);
+        setOrderSuccess(false);
+        setAppliedCoupon(null);
+        closeCart();
+      }, 2500);
+    } catch (err: any) {
+      console.error("Cashfree checkout error:", err);
+      const errMsg = err?.message || "Payment could not be completed. Please try again.";
+      setPaymentError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   return (
@@ -1106,28 +1392,41 @@ function CartDrawer() {
       <div
         aria-hidden={!isOpen}
         onClick={closeCart}
-        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
       />
       <aside
-        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${isOpen ? "translate-x-0" : "translate-x-full"
+          }`}
         aria-label="Shopping cart"
         data-lenis-prevent
       >
-        <div className="flex items-center justify-between px-6 py-6 border-b border-gold/20">
-          <div className="font-display text-2xl text-forest">Your Bag</div>
+        {/* Header Bar */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gold/20 bg-ivory">
+          <div className="flex items-center gap-2">
+            {isCheckingOut && (
+              <button
+                onClick={() => setIsCheckingOut(false)}
+                className="w-8 h-8 rounded-full border border-gold/30 grid place-items-center text-forest hover:bg-gold/10 text-xs transition cursor-pointer"
+                title="Back to Bag"
+              >
+                ←
+              </button>
+            )}
+            <div className="font-display text-2xl text-forest">
+              {isCheckingOut ? "Checkout Details" : "Your Bag"}
+            </div>
+          </div>
           <button
             aria-label="Close cart"
             onClick={closeCart}
-            className="w-9 h-9 grid place-items-center rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition"
+            className="w-9 h-9 grid place-items-center rounded-full border border-gold/30 text-forest hover:bg-gold/10 transition cursor-pointer"
           >
             ✕
           </button>
         </div>
 
+        {/* Drawer Body Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6" data-lenis-prevent>
           {orderSuccess ? (
             <div className="p-6 bg-emerald-950/10 border border-emerald-800/30 rounded-3xl text-center space-y-3">
@@ -1136,106 +1435,309 @@ function CartDrawer() {
                 Order Placed Successfully!
               </h3>
               <p className="text-xs text-forest/70">
-                Thank you for choosing Thakur Yograj. Your order has been saved and sent to our admin team.
+                Thank you for choosing Thakur Yograj. Your order details and payment receipt have been saved under your account ({user?.email}).
               </p>
             </div>
-          ) : (
+          ) : !isCheckingOut ? (
+            /* STEP 1: YOUR BAG & PRICE BREAKDOWN */
             <>
-              {items.length === 0 && (
-                <p className="text-forest/60 text-sm">
-                  Your bag is empty. Explore the collection to begin your ritual.
-                </p>
-              )}
-              {items.map((i) => (
-                <div key={i.name} className="flex gap-4">
-                  <img
-                    src={i.img}
-                    alt={i.name}
-                    className="w-20 h-20 rounded-xl object-cover border border-gold/20"
-                  />
-                  <div className="flex-1">
-                    <div className="font-display text-lg text-forest">{i.name}</div>
-                    <div className="text-sm text-forest/60">{i.price}</div>
-                    <div className="mt-2 flex items-center gap-3">
+              {items.length === 0 ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="text-4xl opacity-40">🛍️</div>
+                  <p className="text-forest/60 text-sm">
+                    Your bag is empty. Explore our remedy collection to begin your ritual.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {items.map((i) => (
+                    <div key={i.name} className="flex gap-4 p-3 bg-forest/5 rounded-2xl border border-gold/15">
+                      <img
+                        src={i.img}
+                        alt={i.name}
+                        className="w-20 h-20 rounded-xl object-cover border border-gold/20 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-display text-base text-forest truncate font-bold">{i.name}</div>
+                        <div className="text-xs text-gold font-semibold mt-0.5">{i.price}</div>
+                        <div className="mt-2.5 flex items-center gap-3">
+                          <button
+                            onClick={() => setQty(i.name, i.qty - 1)}
+                            className="w-7 h-7 rounded-full border border-gold/30 text-forest text-xs hover:bg-gold/10 flex items-center justify-center cursor-pointer"
+                          >
+                            −
+                          </button>
+                          <span className="text-xs font-bold text-forest w-4 text-center">{i.qty}</span>
+                          <button
+                            onClick={() => setQty(i.name, i.qty + 1)}
+                            className="w-7 h-7 rounded-full border border-gold/30 text-forest text-xs hover:bg-gold/10 flex items-center justify-center cursor-pointer"
+                          >
+                            +
+                          </button>
+                          <button
+                            onClick={() => removeItem(i.name)}
+                            className="ml-auto text-[10px] uppercase font-bold text-forest/50 hover:text-red-700 transition cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Promo Coupon Code Section */}
+                  <div className="pt-2">
+                    <form onSubmit={handleApplyCoupon} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter Promo Code"
+                        value={couponCodeInput}
+                        onChange={(e) => setCouponCodeInput(e.target.value)}
+                        className="flex-1 p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold uppercase"
+                      />
                       <button
-                        onClick={() => setQty(i.name, i.qty - 1)}
-                        className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
+                        type="submit"
+                        className="px-4 py-2.5 bg-forest text-ivory rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-forest-deep transition cursor-pointer shrink-0"
                       >
-                        −
+                        Apply
                       </button>
-                      <span className="text-sm text-forest w-4 text-center">{i.qty}</span>
-                      <button
-                        onClick={() => setQty(i.name, i.qty + 1)}
-                        className="w-7 h-7 rounded-full border border-gold/30 text-forest text-sm hover:bg-gold/10"
-                      >
-                        +
-                      </button>
-                      <button
-                        onClick={() => removeItem(i.name)}
-                        className="ml-auto text-xs text-forest/50 hover:text-gold underline"
-                      >
-                        Remove
-                      </button>
+                    </form>
+
+                    {appliedCoupon && (
+                      <div className="mt-2.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold">
+                        <span>🏷️ Coupon <strong>{appliedCoupon.code}</strong> Applied!</span>
+                        <button
+                          onClick={handleRemoveCoupon}
+                          className="text-[10px] text-red-600 hover:underline uppercase font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comprehensive Price Breakdown Box */}
+                  <div className="p-4 rounded-2xl bg-cream/50 border border-gold/20 space-y-2 text-xs">
+                    <div className="font-display text-sm font-bold text-forest border-b border-gold/15 pb-2">
+                      Bill Details & Price Breakdown
+                    </div>
+                    <div className="flex justify-between text-forest/75 pt-1">
+                      <span>Item Total (Subtotal)</span>
+                      <span className="font-semibold text-forest">₹{subtotal.toLocaleString("en-IN")}</span>
+                    </div>
+
+                    {appliedCoupon && (
+                      <div className="flex justify-between text-emerald-700 font-semibold">
+                        <span>Coupon Discount ({appliedCoupon.code})</span>
+                        <span>- ₹{discountAmount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-forest/75">
+                      <span>
+                        Delivery Fee{" "}
+                        {freeThresholdConfig > 0 && subtotal < freeThresholdConfig && subtotal > 0 && (
+                          <span className="text-[10px] text-forest/50 font-normal">
+                            (Free over ₹{freeThresholdConfig})
+                          </span>
+                        )}
+                      </span>
+                      <span className={shippingFee === 0 ? "text-emerald-700 font-semibold uppercase" : "font-semibold"}>
+                        {shippingFee === 0 ? "FREE" : `₹${shippingFee}`}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-forest/75 text-[11px]">
+                      <span>GST Tax ({gstRate}%)</span>
+                      <span className={isGstIncluded ? "text-emerald-700 font-bold uppercase text-[10px]" : "font-bold text-forest"}>
+                        {isGstIncluded ? "Included in Price" : `+ ₹${gstAmount.toLocaleString("en-IN")}`}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-forest font-bold border-t border-gold/20 pt-2.5 text-sm">
+                      <span>Grand Total</span>
+                      <span className="font-bold text-forest text-base">
+                        ₹{finalTotal.toLocaleString("en-IN")}
+                      </span>
                     </div>
                   </div>
                 </div>
-              ))}
+              )}
+            </>
+          ) : (
+            /* STEP 2: CHECKOUT (SHIPPING & PAYMENT) */
+            <>
+              {user && (
+                <form id="checkout-form" onSubmit={handleCheckout} className="space-y-5 text-xs">
+                  <div className="p-3.5 bg-forest/5 border border-gold/20 rounded-2xl flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-gold uppercase font-bold tracking-wider block">Logged In Account</span>
+                      <span className="font-bold text-forest">{user.displayName || "Customer"}</span>
+                      <span className="text-forest/60 block text-[11px]">{user.email}</span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-700 font-bold px-2 py-0.5 rounded-full">Verified</span>
+                  </div>
 
-              {isCheckingOut && items.length > 0 && (
-                <form id="checkout-form" onSubmit={handleCheckout} className="pt-4 border-t border-gold/20 space-y-3 text-xs">
-                  <h4 className="font-display text-base text-forest font-bold">Shipping Details</h4>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Full Name"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
-                  />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Phone Number (+91)"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
-                  />
-                  <textarea
-                    required
-                    rows={2}
-                    placeholder="Full Shipping Address & Pincode"
-                    value={shippingAddress}
-                    onChange={(e) => setShippingAddress(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
-                  />
+                  <div className="space-y-3">
+                    <h4 className="font-display text-base text-forest font-bold">1. Delivery Address</h4>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Full Name"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                    />
+                    <input
+                      type="email"
+                      required
+                      placeholder="Email Address"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                    />
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      pattern="[6-9][0-9]{9}"
+                      placeholder="10-Digit Mobile Number (e.g. 9876543210)"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d]/g, ""))}
+                      className="w-full p-3 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold font-mono"
+                    />
+                    <textarea
+                      required
+                      rows={2}
+                      minLength={10}
+                      placeholder="Full Delivery Address (House No, Street, City, State & 6-digit Pincode)"
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold"
+                    />
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <h4 className="font-display text-base text-forest font-bold">2. Payment Method</h4>
+                    <div className="space-y-2.5">
+                      <label className={`flex items-center gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${paymentMethod === "Cashfree" ? "border-gold bg-gold/10" : "border-gold/20 hover:border-gold/50"}`}>
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="Cashfree"
+                          checked={paymentMethod === "Cashfree"}
+                          onChange={() => setPaymentMethod("Cashfree")}
+                          className="accent-gold"
+                        />
+                        <div className="flex-1">
+                          <div className="font-semibold text-forest text-xs flex items-center justify-between">
+                            <span>Online Payment (Cashfree)</span>
+                            <span className="text-[9px] bg-gold/20 text-gold-dark uppercase font-bold px-2 py-0.5 rounded-full">Instant</span>
+                          </div>
+                          <p className="text-[10px] text-forest/70 mt-0.5">
+                            UPI (GPay, PhonePe, Paytm), Credit/Debit Cards, NetBanking & Wallets
+                          </p>
+                        </div>
+                      </label>
+
+                      <label
+                        className={`flex items-center gap-3 p-3.5 rounded-2xl border transition ${
+                          !storeSettings.isCodEnabled
+                            ? "opacity-50 border-gold/10 bg-forest/5 cursor-not-allowed"
+                            : paymentMethod === "COD"
+                            ? "border-gold bg-gold/10 cursor-pointer"
+                            : "border-gold/20 hover:border-gold/50 cursor-pointer"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="COD"
+                          disabled={!storeSettings.isCodEnabled}
+                          checked={paymentMethod === "COD" && storeSettings.isCodEnabled}
+                          onChange={() => storeSettings.isCodEnabled && setPaymentMethod("COD")}
+                          className="accent-gold"
+                        />
+                        <div className="flex-1">
+                          <div className="font-semibold text-forest text-xs flex items-center justify-between">
+                            <span>Cash on Delivery (COD)</span>
+                            {!storeSettings.isCodEnabled && (
+                              <span className="text-[9px] bg-rose-500/20 text-rose-700 font-bold px-2 py-0.5 rounded-full uppercase">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-forest/70 mt-0.5">
+                            {storeSettings.isCodEnabled
+                              ? "Pay in cash when your package arrives at your doorstep"
+                              : "Currently disabled. Please choose Online Payment (Cashfree)."}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Summary Card */}
+                  <div className="p-3 bg-cream/40 border border-gold/15 rounded-xl flex items-center justify-between text-xs">
+                    <span className="text-forest/70">Final Payable Amount:</span>
+                    <span className="font-bold text-forest text-base">₹{finalTotal.toLocaleString("en-IN")}</span>
+                  </div>
+
+                  {paymentError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-700 text-[11px]">
+                      {paymentError}
+                    </div>
+                  )}
                 </form>
               )}
             </>
           )}
         </div>
 
+        {/* Drawer Bottom Action Bar */}
         {items.length > 0 && !orderSuccess && (
-          <div className="px-6 py-6 border-t border-gold/20">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-forest/70">Subtotal</span>
-              <span className="font-display text-2xl text-forest">
-                ₹{subtotal.toLocaleString("en-IN")}
-              </span>
-            </div>
-            {isCheckingOut ? (
+          <div className="px-6 py-5 border-t border-gold/20 bg-ivory">
+            {!isCheckingOut ? (
+              /* STEP 1 FOOTER */
+              <div className="space-y-3">
+                {!user ? (
+                  <button
+                    onClick={() => {
+                      closeCart();
+                      navigate({ to: "/login" });
+                    }}
+                    className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold flex items-center justify-center gap-2 cursor-pointer shadow-luxe"
+                  >
+                    <span>🔐 Log In to Checkout</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleProceedToCheckout}
+                    className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold cursor-pointer shadow-luxe flex items-center justify-center gap-2"
+                  >
+                    <span>Proceed to Delivery & Checkout</span>
+                    <span>→</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* STEP 2 FOOTER */
               <button
                 type="submit"
                 form="checkout-form"
-                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold"
+                disabled={isProcessingPayment}
+                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-luxe"
               >
-                Place Order (COD)
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsCheckingOut(true)}
-                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold"
-              >
-                Proceed to Checkout
+                {isProcessingPayment ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-ivory border-t-transparent rounded-full animate-spin" />
+                    Initializing Payment...
+                  </>
+                ) : paymentMethod === "Cashfree" ? (
+                  "Pay Now with Cashfree"
+                ) : (
+                  "Place Order (COD)"
+                )}
               </button>
             )}
           </div>
@@ -1366,8 +1868,8 @@ function Spotlight() {
             <button
               onClick={() => setActiveTab("hair")}
               className={`px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-widest border transition-all duration-300 ${isHair
-                  ? "bg-emerald-800 border-emerald-800 text-ivory shadow-sm"
-                  : "border-gold/30 text-ivory/60 hover:bg-gold/10"
+                ? "bg-emerald-800 border-emerald-800 text-ivory shadow-sm"
+                : "border-gold/30 text-ivory/60 hover:bg-gold/10"
                 }`}
             >
               Hair Care Bestseller
@@ -1375,8 +1877,8 @@ function Spotlight() {
             <button
               onClick={() => setActiveTab("pain")}
               className={`px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-widest border transition-all duration-300 ${!isHair
-                  ? "bg-red-800 border-red-800 text-ivory shadow-sm"
-                  : "border-gold/30 text-ivory/60 hover:bg-gold/10"
+                ? "bg-red-800 border-red-800 text-ivory shadow-sm"
+                : "border-gold/30 text-ivory/60 hover:bg-gold/10"
                 }`}
             >
               Pain Relief Bestseller
@@ -1394,11 +1896,10 @@ function Spotlight() {
               return (
                 <div
                   key={tabName}
-                  className={`col-start-1 row-start-1 w-full grid lg:grid-cols-12 gap-12 items-center transition-all duration-1000 ease-in-out ${
-                    isTabActive
+                  className={`col-start-1 row-start-1 w-full grid lg:grid-cols-12 gap-12 items-center transition-all duration-1000 ease-in-out ${isTabActive
                       ? "opacity-100 translate-y-0 scale-100 z-10 pointer-events-auto"
                       : "opacity-0 translate-y-8 scale-95 z-0 pointer-events-none"
-                  }`}
+                    }`}
                 >
                   {/* Left Info Column */}
                   <div className="lg:col-span-7 text-ivory">
@@ -1659,8 +2160,8 @@ function Ingredients() {
                 <div
                   key={h.name}
                   className={`col-start-1 row-start-1 w-full rounded-[2.5rem] border bg-card shadow-luxe p-6 md:p-12 text-center relative overflow-hidden transition-all duration-700 ease-in-out ${cardThemeClass} ${isActive
-                      ? "opacity-100 translate-y-0 scale-100 z-10 pointer-events-auto"
-                      : "opacity-0 translate-y-4 scale-95 z-0 pointer-events-none"
+                    ? "opacity-100 translate-y-0 scale-100 z-10 pointer-events-auto"
+                    : "opacity-0 translate-y-4 scale-95 z-0 pointer-events-none"
                     }`}
                 >
                   {/* Watermark leaf */}
@@ -2472,14 +2973,14 @@ function Footer() {
             links={["Hair Oil", "Pain Relief Oil", "Combo Packs", "Gift Sets"]}
             onLinkClick={handleFooterLink}
           />
-          <FooterCol 
-            title="Company" 
-            links={["Our Story", "Ingredients", "Process", "Journal"]} 
+          <FooterCol
+            title="Company"
+            links={["Our Story", "Ingredients", "Process", "Journal"]}
             onLinkClick={handleFooterLink}
           />
-          <FooterCol 
-            title="Support" 
-            links={["Contact", "Shipping", "Returns", "WhatsApp"]} 
+          <FooterCol
+            title="Support"
+            links={["Contact", "Shipping", "Returns", "WhatsApp"]}
             onLinkClick={handleFooterLink}
           />
         </div>
@@ -2508,13 +3009,13 @@ function Footer() {
   );
 }
 
-function FooterCol({ 
-  title, 
-  links, 
-  onLinkClick 
-}: { 
-  title: string; 
-  links: string[]; 
+function FooterCol({
+  title,
+  links,
+  onLinkClick
+}: {
+  title: string;
+  links: string[];
   onLinkClick: (label: string, e: React.MouseEvent) => void;
 }) {
   return (
@@ -2523,9 +3024,9 @@ function FooterCol({
       <ul className="mt-4 space-y-3 text-sm text-forest/80">
         {links.map((l) => (
           <li key={l}>
-            <a 
-              href="#" 
-              onClick={(e) => onLinkClick(l, e)} 
+            <a
+              href="#"
+              onClick={(e) => onLinkClick(l, e)}
               className="hover:text-gold transition cursor-pointer"
             >
               {l}
@@ -3187,7 +3688,7 @@ function KnowledgeHub() {
       {selectedArticle && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-forest-deep/60 backdrop-blur-md" data-lenis-prevent>
           <div className="relative w-full max-w-3xl bg-ivory rounded-[2.5rem] border border-gold/30 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" data-lenis-prevent>
-            
+
             {/* Header image banner */}
             <div className="relative h-48 md:h-64 shrink-0 bg-cream">
               <img
@@ -3417,8 +3918,8 @@ function RitualGuide() {
           <button
             onClick={() => setActiveTab("hair")}
             className={`px-8 py-3 rounded-full text-xs font-semibold uppercase tracking-widest border transition-all duration-300 ${activeTab === "hair"
-                ? "bg-forest border-forest text-ivory shadow-luxe"
-                : "border-gold/30 text-forest hover:bg-gold/10"
+              ? "bg-forest border-forest text-ivory shadow-luxe"
+              : "border-gold/30 text-forest hover:bg-gold/10"
               }`}
           >
             Hair Care Ritual
@@ -3426,8 +3927,8 @@ function RitualGuide() {
           <button
             onClick={() => setActiveTab("pain")}
             className={`px-8 py-3 rounded-full text-xs font-semibold uppercase tracking-widest border transition-all duration-300 ${activeTab === "pain"
-                ? "bg-forest border-forest text-ivory shadow-luxe"
-                : "border-gold/30 text-forest hover:bg-gold/10"
+              ? "bg-forest border-forest text-ivory shadow-luxe"
+              : "border-gold/30 text-forest hover:bg-gold/10"
               }`}
           >
             Pain Relief Ritual
@@ -3540,14 +4041,12 @@ function WishlistDrawer() {
       <div
         aria-hidden={!isWishlistOpen}
         onClick={closeWishlist}
-        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${
-          isWishlistOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-[60] bg-forest-deep/50 backdrop-blur-sm transition-opacity ${isWishlistOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
       />
       <aside
-        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${
-          isWishlistOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-ivory border-l border-gold/30 shadow-luxe flex flex-col transition-transform duration-500 ${isWishlistOpen ? "translate-x-0" : "translate-x-full"
+          }`}
         aria-label="Wishlist"
       >
         <div className="flex items-center justify-between px-6 py-6 border-b border-gold/20">
@@ -3866,11 +4365,11 @@ function WhatsAppFloat() {
       href={whatsappUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed bottom-6 right-6 z-[100] w-14 h-14 bg-[#25D366] text-ivory rounded-full shadow-[0_8px_24px_rgba(37,211,102,0.35)] flex items-center justify-center transition duration-300 hover:scale-110 hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(37,211,102,0.5)] group active:scale-95 cursor-pointer"
+      className="fixed bottom-6 left-6 z-[100] w-14 h-14 bg-[#25D366] text-ivory rounded-full shadow-[0_8px_24px_rgba(37,211,102,0.35)] flex items-center justify-center transition duration-300 hover:scale-110 hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(37,211,102,0.5)] group active:scale-95 cursor-pointer"
       aria-label="Chat on WhatsApp"
     >
       <WhatsAppIcon />
-      <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-forest text-ivory text-[10px] tracking-wider font-semibold uppercase px-3 py-1.5 rounded-full opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-300 shadow-md whitespace-nowrap border border-gold/20">
+      <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 bg-forest text-ivory text-[10px] tracking-wider font-semibold uppercase px-3 py-1.5 rounded-full opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-300 shadow-md whitespace-nowrap border border-gold/20">
         Chat with a Vaidya
       </span>
     </a>

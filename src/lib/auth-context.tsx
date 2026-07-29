@@ -174,6 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── 2. Firebase Auth state listener ────────────────────────────────────────
   useEffect(() => {
     if (isFirebaseConfigured && auth) {
+      // Set default local persistence so users stay logged in across sessions
+      setPersistence(auth, browserLocalPersistence).catch((err) =>
+        console.warn("Failed to set auth persistence:", err)
+      );
+
       // Handle Google/Facebook redirect result
       getRedirectResult(auth)
         .then((cred) => {

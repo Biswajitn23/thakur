@@ -5,6 +5,7 @@ import { useProducts, type Concern, type ProductItem } from "@/hooks/use-product
 import { useOrders, type OrderStatus, type OrderItem } from "@/hooks/use-orders";
 import { useCoupons } from "@/hooks/use-coupons";
 import { useMessages, type ContactMessage } from "@/hooks/use-messages";
+import { useStoreSettings } from "@/hooks/use-store-settings";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ import {
   Tag,
   DollarSign,
   UserCheck,
+  CreditCard,
   RefreshCw,
   Server,
   CloudCheck,
@@ -54,6 +56,7 @@ function AdminPage() {
   const { orders, updateOrderStatus, updateOrderTracking, deleteOrder } = useOrders();
   const { coupons, addCoupon, toggleCouponStatus, deleteCoupon } = useCoupons();
   const { messages, updateMessageStatus, deleteMessage } = useMessages();
+  const { settings: storeSettings, updateCodSetting, updateStoreSettings } = useStoreSettings();
 
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "coupons" | "messages" | "subscribers" | "settings">("overview");
 
@@ -271,7 +274,9 @@ function AdminPage() {
   };
 
   // Metrics
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const totalRevenue = orders
+    .filter((o) => o.paymentStatus === "Paid")
+    .reduce((sum, o) => sum + (o.total || 0), 0);
   const pendingOrdersCount = orders.filter((o) => o.status === "Pending").length;
 
   const filteredProducts = products.filter(
@@ -326,49 +331,66 @@ function AdminPage() {
   return (
     <div className="min-h-screen bg-stone-950 text-amber-50 flex flex-col font-sans">
       {/* Top Navbar */}
-      <header className="border-b border-amber-500/20 bg-stone-900/90 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+      <header className="border-b border-amber-500/25 bg-stone-900/95 backdrop-blur-xl px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-xl">
         <div className="flex items-center gap-4">
           <Link
             to="/"
-            className="p-2 rounded-xl bg-stone-800 text-amber-400 hover:bg-stone-700 transition"
-            title="Return to Store Front"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 hover:bg-amber-500/20 hover:text-amber-100 transition text-xs font-bold shadow-sm"
+            title="Return to Main Storefront Website Page"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Main Website Page</span>
           </Link>
+
+          <div className="h-6 w-px bg-amber-500/20 hidden sm:block" />
+
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-serif text-lg font-bold text-amber-100">
+              <span className="font-serif text-lg font-bold text-amber-100 tracking-wide">
                 Thakur Yograj
               </span>
-              <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-extrabold tracking-wider bg-gradient-to-r from-amber-500/20 via-amber-400/30 to-amber-500/20 text-amber-300 border border-amber-400/40 shadow-inner">
                 Admin Panel
               </span>
             </div>
-            <p className="text-xs text-amber-200/50">
-              E-Commerce Management Dashboard
+            <p className="text-[11px] text-amber-200/50">
+              E-Commerce Management & Real-time Operations
             </p>
           </div>
         </div>
 
+        {/* Profile & Quick Actions */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleRefreshDB}
             disabled={refreshingDB}
-            className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 transition flex items-center gap-2 text-xs font-bold cursor-pointer"
+            className="px-3.5 py-2 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 transition flex items-center gap-2 text-xs font-bold cursor-pointer"
             title="Sync & Refresh DB from Firestore"
           >
             <RefreshCw className={`w-4 h-4 text-amber-400 ${refreshingDB ? "animate-spin" : ""}`} />
-            <span>{refreshingDB ? "Syncing DB..." : "Refresh DB"}</span>
+            <span className="hidden md:inline">{refreshingDB ? "Syncing DB..." : "Sync DB"}</span>
           </button>
 
-          <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-stone-800 border border-amber-500/10 text-xs">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>{user?.email || "Admin User"}</span>
+          {/* Unique Profile Badge */}
+          <div className="hidden sm:flex items-center gap-3 px-3.5 py-1.5 rounded-2xl bg-stone-950 border border-amber-500/20 shadow-inner">
+            <div className="relative w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-amber-400 text-stone-950 font-black text-xs grid place-items-center shadow-md">
+              {user?.displayName ? user.displayName.charAt(0).toUpperCase() : user?.email ? user.email.charAt(0).toUpperCase() : "A"}
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-stone-950" />
+            </div>
+            <div className="text-left text-xs pr-1">
+              <div className="font-bold text-amber-100 leading-tight">
+                {user?.displayName || "Administrator"}
+              </div>
+              <div className="text-[10px] text-amber-200/60 font-mono truncate max-w-[140px]">
+                {user?.email}
+              </div>
+            </div>
           </div>
 
           <button
             onClick={() => logout()}
-            className="p-2 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-300 hover:bg-rose-900 transition flex items-center gap-2 text-xs font-semibold cursor-pointer"
+            className="px-3.5 py-2 rounded-2xl bg-rose-950/60 border border-rose-500/30 text-rose-300 hover:bg-rose-900 transition flex items-center gap-2 text-xs font-bold cursor-pointer shadow-sm"
+            title="Sign Out"
           >
             <LogOut className="w-4 h-4" />
             <span className="hidden sm:inline">Logout</span>
@@ -504,7 +526,7 @@ function AdminPage() {
                       <p className="text-xs uppercase tracking-wider text-amber-200/50 font-semibold">
                         Total Revenue
                       </p>
-                      <h3 className="font-serif text-3xl font-bold text-amber-100 mt-2">
+                      <h3 className="text-3xl font-bold text-amber-100 mt-2">
                         ₹{totalRevenue.toLocaleString("en-IN")}
                       </h3>
                     </div>
@@ -763,11 +785,35 @@ function AdminPage() {
                             <span className="text-xs text-amber-200/40">
                               {o.createdAt}
                             </span>
+                            {o.paymentMethod && (
+                              <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
+                                o.paymentMethod === "Cashfree"
+                                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                  : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                              }`}>
+                                {o.paymentMethod === "Cashfree" ? "Cashfree Online" : "COD"}
+                              </span>
+                            )}
+                            {o.paymentStatus && (
+                              <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
+                                o.paymentStatus === "Paid"
+                                  ? "bg-emerald-950/80 border-emerald-500/40 text-emerald-300"
+                                  : o.paymentStatus === "Failed"
+                                  ? "bg-rose-950/80 border-rose-500/40 text-rose-300"
+                                  : "bg-amber-950/80 border-amber-500/40 text-amber-300"
+                              }`}>
+                                {o.paymentStatus === "Paid" ? "✓ Paid" : o.paymentStatus}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-xs text-amber-200/70">
                             <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="font-bold">{o.customerName}</span> (
-                            {o.customerEmail})
+                            <span className="font-bold">{o.customerName}</span> ({o.customerEmail})
+                            {o.userId && (
+                              <span className="text-[9px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-mono">
+                                UID: {o.userId.slice(0, 10)}...
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -830,6 +876,18 @@ function AdminPage() {
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-amber-200/70">{o.courierName}:</span>
                                 <span className="font-mono font-bold text-amber-200">{o.trackingNumber}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {(o.cfOrderId || o.paymentId) && (
+                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-emerald-500/20 rounded-xl space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
+                                Cashfree Payment Transaction
+                              </span>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-amber-200/70">CF Order ID:</span>
+                                <span className="font-mono font-bold text-emerald-300">{o.cfOrderId || o.paymentId}</span>
                               </div>
                             </div>
                           )}
@@ -1111,6 +1169,150 @@ function AdminPage() {
           {/* TAB 7: SETTINGS */}
           {activeTab === "settings" && (
             <div className="space-y-6">
+              {/* Payment Methods & COD Toggle */}
+              <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-amber-400" /> Cash on Delivery (COD) Mode
+                    </h4>
+                    <p className="text-xs text-amber-200/60 mt-1 max-w-xl">
+                      Enable or disable Cash on Delivery (COD) payment option across the online store. When disabled, customers must pay online via Cashfree.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={storeSettings.isCodEnabled}
+                      onChange={(e) => {
+                        updateCodSetting(e.target.checked);
+                        toast.success(
+                          e.target.checked
+                            ? "Cash on Delivery (COD) enabled store-wide."
+                            : "Cash on Delivery (COD) disabled store-wide."
+                        );
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-14 h-7 bg-stone-950 border border-amber-500/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-amber-400 after:border-stone-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600/80 peer-checked:border-emerald-500" />
+                  </label>
+                </div>
+
+                <div className="p-3 bg-stone-950 border border-amber-500/10 rounded-xl text-xs flex items-center justify-between">
+                  <span className="text-amber-200/70">Current COD Payment Status:</span>
+                  <span
+                    className={`font-bold px-3 py-1 rounded-full text-[10px] uppercase tracking-wider ${
+                      storeSettings.isCodEnabled
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                        : "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                    }`}
+                  >
+                    {storeSettings.isCodEnabled ? "Available (Enabled)" : "Disabled (Unavailable)"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Delivery & Shipping Fee Configuration */}
+              <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4">
+                <div>
+                  <h4 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+                    <Truck className="w-5 h-5 text-amber-400" /> Delivery & Shipping Rates
+                  </h4>
+                  <p className="text-xs text-amber-200/60 mt-1">
+                    Set default delivery charges and threshold for free shipping on customer orders.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="block text-amber-200/80 font-medium">Standard Delivery Fee (₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={storeSettings.deliveryFee}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0);
+                        updateStoreSettings({ deliveryFee: val });
+                      }}
+                      className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
+                    />
+                    <p className="text-[10px] text-amber-200/40">Fee charged on orders below threshold.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-amber-200/80 font-medium">Free Shipping Order Minimum (₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={storeSettings.freeShippingThreshold}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0);
+                        updateStoreSettings({ freeShippingThreshold: val });
+                      }}
+                      className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
+                    />
+                    <p className="text-[10px] text-amber-200/40">Orders equal to or above this amount get Free Delivery.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* GST / Tax Configuration */}
+              <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-amber-400" /> GST Tax Configuration
+                    </h4>
+                    <p className="text-xs text-amber-200/60 mt-1 max-w-xl">
+                      Choose whether product prices already include GST taxes or if GST should be added as a separate charge at checkout.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={storeSettings.isGstIncluded}
+                      onChange={(e) => {
+                        updateStoreSettings({ isGstIncluded: e.target.checked });
+                        toast.success(
+                          e.target.checked
+                            ? "GST configured as INCLUDED in product prices."
+                            : "GST configured as SEPARATE ADDITION at checkout."
+                        );
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-14 h-7 bg-stone-950 border border-amber-500/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-amber-400 after:border-stone-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600/80 peer-checked:border-emerald-500" />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="block text-amber-200/80 font-medium">GST Rate (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={storeSettings.gstPercentage}
+                      onChange={(e) => {
+                        const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                        updateStoreSettings({ gstPercentage: val });
+                      }}
+                      className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
+                    />
+                    <p className="text-[10px] text-amber-200/40">Standard GST percentage (e.g. 18% for herbal goods).</p>
+                  </div>
+
+                  <div className="p-3.5 bg-stone-950 border border-amber-500/10 rounded-xl text-xs flex flex-col justify-center space-y-1">
+                    <span className="text-amber-200/70 font-semibold">Active Tax Mode:</span>
+                    <span className="font-bold text-amber-100">
+                      {storeSettings.isGstIncluded
+                        ? `Prices Include GST (${storeSettings.gstPercentage}%)`
+                        : `GST (${storeSettings.gstPercentage}%) Added Separately at Checkout`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Admin Whitelist Manager */}
               <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-5">
                 <div>

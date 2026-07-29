@@ -25,36 +25,6 @@ export interface ContactMessage {
 
 const LOCAL_STORAGE_MESSAGES_KEY = "thakur_custom_contact_messages";
 
-const INITIAL_MESSAGES: ContactMessage[] = [
-  {
-    id: "msg-101",
-    name: "Dr. Rajesh Varma",
-    email: "rajesh.varma@ayurmed.org",
-    phone: "+91 94255 12345",
-    subject: "Bulk Institutional Inquiry for Herbal Oils",
-    message: "Namaste Thakur Vaidya team. We run a holistic wellness retreat in Raipur and would like to order 50 units of Pain Relief Oil and Hair Oil Duo monthly. Please share wholesale terms.",
-    status: "unread",
-    createdAt: new Date(Date.now() - 3600000 * 5).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }),
-  },
-  {
-    id: "msg-102",
-    name: "Meenakshi Sundaram",
-    email: "meenakshi.s@gmail.com",
-    phone: "+91 98840 99887",
-    subject: "Dosha Consultation Query",
-    message: "I took the online Pitta-Vata diagnostic quiz and had a question regarding the recommended hair routine duration. Should I apply the oil overnight or 2 hours prior to bath?",
-    status: "read",
-    createdAt: new Date(Date.now() - 86400000 * 1.5).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }),
-  },
-];
 
 export function useMessages() {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
@@ -151,23 +121,11 @@ export function useMessages() {
     }
   };
 
-  const seedMessagesToFirestore = async () => {
-    if (!isFirebaseConfigured || !db) return;
-    for (const m of INITIAL_MESSAGES) {
-      const { id, ...payload } = m;
-      await addDoc(collection(db, "contact_messages"), {
-        ...payload,
-        serverTimestamp: serverTimestamp(),
-      });
-    }
-  };
-
   return {
     messages,
     loading,
     sendMessage,
     updateMessageStatus,
     deleteMessage,
-    seedMessagesToFirestore,
   };
 }
