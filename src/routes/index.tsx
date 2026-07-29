@@ -120,6 +120,8 @@ export const CartContext = createContext<{
   isQuizOpen: boolean;
   openQuiz: () => void;
   closeQuiz: () => void;
+  appliedCoupon: any;
+  setAppliedCoupon: (coupon: any) => void;
 }>({
   items: [],
   addItem: () => { },
@@ -138,6 +140,8 @@ export const CartContext = createContext<{
   isQuizOpen: false,
   openQuiz: () => { },
   closeQuiz: () => { },
+  appliedCoupon: null,
+  setAppliedCoupon: () => { },
 });
 
 function Index() {
@@ -164,6 +168,8 @@ function Index() {
     isQuizOpen,
     openQuiz,
     closeQuiz,
+    appliedCoupon,
+    setAppliedCoupon,
   } = useCartContext();
 
   // Auto-open cart sidebar when navigating back from checkout via "Shopping Bag" step
@@ -221,6 +227,8 @@ function Index() {
           isQuizOpen,
           openQuiz,
           closeQuiz,
+          appliedCoupon,
+          setAppliedCoupon,
         }}
       >
         <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -1101,7 +1109,7 @@ function ProductCard({ product }: { product: ProductItem }) {
 
 /* ---------------- CART DRAWER ---------------- */
 function CartDrawer() {
-  const { items, isOpen, closeCart, removeItem, setQty, subtotal } = useContext(CartContext);
+  const { items, isOpen, closeCart, removeItem, setQty, subtotal, appliedCoupon, setAppliedCoupon } = useContext(CartContext)!;
   const { createOrder } = useOrders();
   const { coupons } = useCoupons();
   const { settings: storeSettings } = useStoreSettings();
@@ -1127,11 +1135,6 @@ function CartDrawer() {
 
   // Promo Coupon state
   const [couponCodeInput, setCouponCodeInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    discountValue: number;
-    discountType: "percent" | "flat";
-  } | null>(null);
 
   // Auto pre-fill user profile info when logged in
   useEffect(() => {

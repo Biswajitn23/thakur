@@ -53,7 +53,7 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const { user, isAdmin, logout, adminEmails } = useAuth();
   const { products, addProduct, updateProduct, deleteProduct } = useProducts();
-  const { orders, updateOrderStatus, updateOrderTracking, deleteOrder } = useOrders();
+  const { orders, updateOrderStatus, updateOrderPayment, updateOrderTracking, deleteOrder } = useOrders();
   const { coupons, addCoupon, toggleCouponStatus, deleteCoupon } = useCoupons();
   const { messages, updateMessageStatus, deleteMessage } = useMessages();
   const { settings: storeSettings, updateCodSetting, updateStoreSettings } = useStoreSettings();
@@ -84,7 +84,7 @@ function AdminPage() {
         try {
           const list: string[] = JSON.parse(saved);
           setSubscribers(list.map((e) => ({ email: e, date: new Date().toLocaleDateString("en-IN") })));
-        } catch {}
+        } catch { }
       }
     }
   }, []);
@@ -169,6 +169,8 @@ function AdminPage() {
   const [benefitsText, setBenefitsText] = useState("");
   const [stockQty, setStockQty] = useState<number>(45);
 
+  const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+
   // Tracking Modal state
   const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
   const [courierName, setCourierName] = useState("Delhivery Express");
@@ -177,10 +179,15 @@ function AdminPage() {
   const handleSaveTracking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trackingOrder || !trackingNumber.trim()) return;
-    await updateOrderTracking(trackingOrder.id, courierName, trackingNumber.trim());
-    toast.success(`Tracking added for ${trackingOrder.id}! Order status updated to Shipped.`);
-    setTrackingOrder(null);
-    setTrackingNumber("");
+    try {
+      await updateOrderTracking(trackingOrder.id, courierName, trackingNumber.trim());
+      toast.success(`Tracking added for ${trackingOrder.id}! Order status updated to Shipped.`);
+      setTrackingOrder(null);
+      setTrackingNumber("");
+    } catch (err: any) {
+      console.error("Failed to save tracking:", err);
+      toast.error(`Failed to save tracking: ${err.message || err}`);
+    }
   };
 
   // Coupon Modal state
@@ -216,8 +223,28 @@ function AdminPage() {
   const [productQuery, setProductQuery] = useState("");
   const [orderQuery, setOrderQuery] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+  const [orderDateFilter, setOrderDateFilter] = useState("");
   const [couponQuery, setCouponQuery] = useState("");
   const [messageQuery, setMessageQuery] = useState("");
+
+  const parseAdminDateString = (dateStr: string): Date => {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
+    try {
+      const parts = dateStr.trim().split(/\s+/);
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const monthStr = parts[1];
+        const year = parseInt(parts[2]);
+        const months: Record<string, number> = {
+          jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+        };
+        const month = months[monthStr.toLowerCase().substring(0, 3)] ?? 0;
+        return new Date(year, month, day);
+      }
+    } catch (e) { }
+    return new Date();
+  };
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -247,30 +274,37 @@ function AdminPage() {
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    const benefitsArr = benefitsText
-      .split("\n")
-      .map((b) => b.trim())
-      .filter(Boolean);
+    try {
+      const benefitsArr = benefitsText
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
 
-    const payload = {
-      name,
-      subtitle,
-      price,
-      old: oldPrice,
-      img: img || "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/acceb3d6-0ead-46f6-a2cd-d5575bee4650/id-preview-c31f3cc3--40643ab3-0a60-4170-a97f-c32eaab445a3.lovable.app-1783919364369.png",
-      benefits: benefitsArr,
-      rating: 4.9,
-      reviews: Math.floor(100 + Math.random() * 500),
-      concern,
-      stockQty: Number(stockQty) || 45,
-    };
+      const payload = {
+        name,
+        subtitle,
+        price,
+        old: oldPrice,
+        img: img || "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/acceb3d6-0ead-46f6-a2cd-d5575bee4650/id-preview-c31f3cc3--40643ab3-0a60-4170-a97f-c32eaab445a3.lovable.app-1783919364369.png",
+        benefits: benefitsArr,
+        rating: 4.9,
+        reviews: Math.floor(100 + Math.random() * 500),
+        concern,
+        stockQty: Number(stockQty) || 45,
+      };
 
-    if (editingProduct) {
-      await updateProduct(editingProduct.id, payload);
-    } else {
-      await addProduct(payload);
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, payload);
+        toast.success("Product updated in database successfully!");
+      } else {
+        await addProduct(payload);
+        toast.success("Product added to database successfully!");
+      }
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      console.error("Failed to save product:", err);
+      toast.error(`Failed to save product: ${err.message || err}`);
     }
-    setIsAddModalOpen(false);
   };
 
   // Metrics
@@ -289,10 +323,56 @@ function AdminPage() {
     const matchesSearch =
       o.id.toLowerCase().includes(orderQuery.toLowerCase()) ||
       o.customerName.toLowerCase().includes(orderQuery.toLowerCase()) ||
-      o.customerEmail.toLowerCase().includes(orderQuery.toLowerCase());
+      o.customerEmail.toLowerCase().includes(orderQuery.toLowerCase()) ||
+      (o.createdAt && o.createdAt.toLowerCase().includes(orderQuery.toLowerCase()));
     const matchesStatus =
       orderStatusFilter === "all" || o.status === orderStatusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDate =
+      !orderDateFilter ||
+      (() => {
+        try {
+          const d = new Date(orderDateFilter);
+          const oDate = parseAdminDateString(o.createdAt);
+          return (
+            d.getDate() === oDate.getDate() &&
+            d.getMonth() === oDate.getMonth() &&
+            d.getFullYear() === oDate.getFullYear()
+          );
+        } catch {
+          return true;
+        }
+      })();
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
+  const getNextLogicalStatus = (current: OrderStatus): OrderStatus | null => {
+    if (current === "Pending") return "Processing";
+    if (current === "Processing") return "Shipped";
+    if (current === "Shipped") return "Delivered";
+    return null;
+  };
+
+  const statusPriority: Record<OrderStatus, number> = {
+    Pending: 0,
+    Processing: 1,
+    Shipped: 2,
+    Delivered: 3,
+    Cancelled: 4,
+  };
+
+  const sortedOrders: OrderItem[] = [...filteredOrders].sort((a, b) => {
+    const priorityA = statusPriority[a.status] ?? 99;
+    const priorityB = statusPriority[b.status] ?? 99;
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+    try {
+      const timeA = parseAdminDateString(a.createdAt).getTime();
+      const timeB = parseAdminDateString(b.createdAt).getTime();
+      return timeB - timeA;
+    } catch {
+      return 0;
+    }
   });
 
   const unreadMessagesCount = messages.filter((m) => m.status === "unread").length;
@@ -399,16 +479,15 @@ function AdminPage() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto p-4 md:p-8 gap-6">
+      <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto p-4 md:p-8 gap-6 min-h-0">
         {/* Sidebar Nav */}
-        <aside className="w-full md:w-64 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-4 flex flex-row md:flex-col gap-2 shrink-0 overflow-x-auto">
+        <aside className="w-full md:w-64 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-4 flex flex-row md:flex-col gap-2 shrink-0 overflow-x-auto md:overflow-y-auto md:sticky md:top-24 md:max-h-[calc(100vh-7rem)] md:self-start">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left ${
-              activeTab === "overview"
+            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left ${activeTab === "overview"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <TrendingUp className="w-4 h-4" />
             <span>Overview</span>
@@ -416,11 +495,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("products")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "products"
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "products"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <Package className="w-4 h-4" />
@@ -430,11 +508,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("orders")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "orders"
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "orders"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <ShoppingCart className="w-4 h-4" />
@@ -449,11 +526,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("coupons")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "coupons"
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "coupons"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <Percent className="w-4 h-4" />
@@ -466,11 +542,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("messages")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "messages"
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "messages"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <MessageSquare className="w-4 h-4" />
@@ -485,11 +560,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("subscribers")}
-            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "subscribers"
+            className={`flex-1 md:w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "subscribers"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <Mail className="w-4 h-4" />
@@ -502,11 +576,10 @@ function AdminPage() {
 
           <button
             onClick={() => setActiveTab("settings")}
-            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${
-              activeTab === "settings"
+            className={`flex-1 md:w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs uppercase tracking-wider font-semibold transition text-left cursor-pointer ${activeTab === "settings"
                 ? "bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/10"
                 : "text-amber-200/70 hover:bg-stone-800 hover:text-amber-100"
-            }`}
+              }`}
           >
             <Database className="w-4 h-4" />
             <span>Settings</span>
@@ -514,7 +587,7 @@ function AdminPage() {
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 space-y-6">
+        <main className="flex-1 space-y-6 min-w-0">
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="space-y-6">
@@ -526,7 +599,7 @@ function AdminPage() {
                       <p className="text-xs uppercase tracking-wider text-amber-200/50 font-semibold">
                         Total Revenue
                       </p>
-                      <h3 className="text-3xl font-bold text-amber-100 mt-2">
+                      <h3 className="text-3xl font-bold text-amber-100 mt-2 font-sans">
                         ₹{totalRevenue.toLocaleString("en-IN")}
                       </h3>
                     </div>
@@ -573,7 +646,7 @@ function AdminPage() {
               <div className="bg-gradient-to-r from-emerald-950/60 via-stone-900 to-amber-950/40 border border-amber-500/20 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
                   <h4 className="font-serif text-lg font-bold text-amber-100">
-                    Client Quick Actions
+                    Quick Actions
                   </h4>
                   <p className="text-xs text-amber-200/60 mt-1">
                     Add new products or update pending order fulfillment.
@@ -626,7 +699,7 @@ function AdminPage() {
                         </div>
 
                         <div className="flex items-center gap-4">
-                          <span className="font-serif text-sm font-bold text-amber-400">
+                          <span className="font-sans text-sm font-bold text-amber-400">
                             ₹{o.total}
                           </span>
                           {getStatusBadge(o.status)}
@@ -729,16 +802,35 @@ function AdminPage() {
           {activeTab === "orders" && (
             <div className="space-y-6">
               {/* Order Controls */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6">
-                <div className="relative w-full sm:w-72">
-                  <Search className="w-4 h-4 absolute left-3 top-3 text-amber-500/50" />
-                  <input
-                    type="text"
-                    value={orderQuery}
-                    onChange={(e) => setOrderQuery(e.target.value)}
-                    placeholder="Search by customer or order ID..."
-                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 pl-9 pr-4 text-xs text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400"
-                  />
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6">
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-amber-500/50" />
+                    <input
+                      type="text"
+                      value={orderQuery}
+                      onChange={(e) => setOrderQuery(e.target.value)}
+                      placeholder="Search by customer, ID or date..."
+                      className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 pl-9 pr-4 text-xs text-amber-100 placeholder:text-amber-200/30 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                    <input
+                      type="date"
+                      value={orderDateFilter}
+                      onChange={(e) => setOrderDateFilter(e.target.value)}
+                      className="w-full sm:w-auto bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-xs text-amber-100 focus:outline-none focus:border-amber-400 cursor-pointer"
+                    />
+                    {orderDateFilter && (
+                      <button
+                        onClick={() => setOrderDateFilter("")}
+                        className="px-2.5 py-1.5 bg-rose-950/60 border border-rose-500/30 text-rose-300 rounded-xl text-xs hover:bg-rose-900 transition shrink-0 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
@@ -747,11 +839,10 @@ function AdminPage() {
                       <button
                         key={st}
                         onClick={() => setOrderStatusFilter(st)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition whitespace-nowrap ${
-                          orderStatusFilter === st
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition whitespace-nowrap ${orderStatusFilter === st
                             ? "bg-amber-500 text-stone-950 font-bold"
                             : "bg-stone-800 text-amber-200/70 hover:bg-stone-700"
-                        }`}
+                          }`}
                       >
                         {st}
                       </button>
@@ -761,7 +852,7 @@ function AdminPage() {
               </div>
 
               {/* Order Cards */}
-              {filteredOrders.length === 0 ? (
+              {sortedOrders.length === 0 ? (
                 <div className="p-12 text-center bg-stone-900/80 border border-amber-500/20 rounded-3xl space-y-3">
                   <ShoppingCart className="w-8 h-8 text-amber-500/40 mx-auto" />
                   <h4 className="font-serif text-lg font-bold text-amber-100">No Customer Orders Found</h4>
@@ -771,7 +862,7 @@ function AdminPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredOrders.map((o) => (
+                  {sortedOrders.map((o) => (
                     <div
                       key={o.id}
                       className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4"
@@ -786,24 +877,43 @@ function AdminPage() {
                               {o.createdAt}
                             </span>
                             {o.paymentMethod && (
-                              <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
-                                o.paymentMethod === "Cashfree"
+                              <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${o.paymentMethod === "Cashfree"
                                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                                   : "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                              }`}>
+                                }`}>
                                 {o.paymentMethod === "Cashfree" ? "Cashfree Online" : "COD"}
                               </span>
                             )}
                             {o.paymentStatus && (
-                              <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
-                                o.paymentStatus === "Paid"
-                                  ? "bg-emerald-950/80 border-emerald-500/40 text-emerald-300"
-                                  : o.paymentStatus === "Failed"
-                                  ? "bg-rose-950/80 border-rose-500/40 text-rose-300"
-                                  : "bg-amber-950/80 border-amber-500/40 text-amber-300"
-                              }`}>
-                                {o.paymentStatus === "Paid" ? "✓ Paid" : o.paymentStatus}
-                              </span>
+                              o.paymentMethod === "COD" ? (
+                                <button
+                                  onClick={async () => {
+                                    const newStatus = o.paymentStatus === "Paid" ? "Pending" : "Paid";
+                                    await updateOrderPayment(o.id, newStatus);
+                                    toast.success(`COD Payment status updated to "${newStatus}"!`);
+                                  }}
+                                  title="Click to toggle COD payment status"
+                                  className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border transition cursor-pointer hover:scale-105 active:scale-95 duration-200 ${o.paymentStatus === "Paid"
+                                      ? "bg-emerald-950/80 border-emerald-500/40 text-emerald-300"
+                                      : o.paymentStatus === "Failed"
+                                        ? "bg-rose-950/80 border-rose-500/40 text-rose-300"
+                                        : "bg-amber-950/80 border-amber-500/40 text-amber-300"
+                                    }`}
+                                >
+                                  {o.paymentStatus === "Paid" ? "✓ Paid" : o.paymentStatus} ⇄
+                                </button>
+                              ) : (
+                                <span
+                                  className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${o.paymentStatus === "Paid"
+                                      ? "bg-emerald-950/80 border-emerald-500/40 text-emerald-300"
+                                      : o.paymentStatus === "Failed"
+                                        ? "bg-rose-950/80 border-rose-500/40 text-rose-300"
+                                        : "bg-amber-950/80 border-amber-500/40 text-amber-300"
+                                    }`}
+                                >
+                                  {o.paymentStatus === "Paid" ? "✓ Paid" : o.paymentStatus}
+                                </span>
+                              )
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-xs text-amber-200/70">
@@ -833,26 +943,55 @@ function AdminPage() {
                             <span>{o.trackingNumber ? "Tracking Info" : "+ Add Tracking"}</span>
                           </button>
 
-                          <select
-                            value={o.status}
-                            onChange={(e) =>
-                              updateOrderStatus(o.id, e.target.value as OrderStatus)
-                            }
-                            className="bg-stone-950 border border-amber-500/30 text-amber-100 text-xs font-semibold rounded-xl px-3 py-1.5 focus:outline-none focus:border-amber-400"
-                          >
-                            <option value="Pending">Pending</option>
-                            <option value="Processing">Processing</option>
-                            <option value="Shipped">Shipped</option>
-                            <option value="Delivered">Delivered</option>
-                            <option value="Cancelled">Cancelled</option>
-                          </select>
                           <button
-                            onClick={() => deleteOrder(o.id)}
-                            className="p-2 text-rose-400 hover:bg-rose-950/60 rounded-xl transition cursor-pointer"
-                            title="Delete Order"
+                            onClick={() => setSelectedOrder(o)}
+                            className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            <span>View Details</span>
                           </button>
+
+                          <div className="flex flex-wrap items-center gap-1.5 bg-stone-950/40 p-1 rounded-xl border border-stone-800">
+                            {(["Pending", "Processing", "Shipped", "Delivered", "Cancelled"] as OrderStatus[]).map((status) => {
+                              const getStatusBtnStyles = (s: OrderStatus, current: OrderStatus) => {
+                                if (s === current) {
+                                  switch (s) {
+                                    case "Pending": return "bg-amber-500/20 text-amber-400 border-amber-500/50";
+                                    case "Processing": return "bg-blue-500/20 text-blue-400 border-blue-500/50";
+                                    case "Shipped": return "bg-indigo-500/20 text-indigo-400 border-indigo-500/50";
+                                    case "Delivered": return "bg-emerald-500/20 text-emerald-450 border-emerald-500/50";
+                                    case "Cancelled": return "bg-rose-500/20 text-rose-450 border-rose-500/50";
+                                    default: return "bg-stone-500 text-stone-200 border-stone-500";
+                                  }
+                                }
+                                return "bg-[#111] hover:bg-stone-900 border-stone-850 text-stone-400 hover:text-stone-300";
+                              };
+
+                              const nextStatus = getNextLogicalStatus(o.status);
+                              const isNext = status === nextStatus;
+
+                              return (
+                                <button
+                                  key={status}
+                                  onClick={async () => {
+                                    try {
+                                      await updateOrderStatus(o.id, status);
+                                      toast.success(`Order status updated to "${status}"!`);
+                                    } catch (err: any) {
+                                      console.error("Failed to update status:", err);
+                                      toast.error(`Failed to update status: ${err.message}`);
+                                    }
+                                  }}
+                                  className={`px-2.5 py-1 text-[10px] rounded-lg border transition cursor-pointer font-bold uppercase tracking-wider ${isNext
+                                      ? "bg-emerald-500/10 text-emerald-450 border-emerald-500 animate-pulse ring-2 ring-emerald-500/20"
+                                      : getStatusBtnStyles(status, o.status)
+                                    }`}
+                                >
+                                  {isNext ? `→ ${status}` : status}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
 
@@ -880,15 +1019,27 @@ function AdminPage() {
                             </div>
                           )}
 
-                          {(o.cfOrderId || o.paymentId) && (
-                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-emerald-500/20 rounded-xl space-y-1">
+                          {(o.cfOrderId || o.paymentId || o.paymentTxnId) && (
+                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-emerald-500/20 rounded-xl space-y-1.5 text-left">
                               <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
                                 Cashfree Payment Transaction
                               </span>
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-amber-200/70">CF Order ID:</span>
-                                <span className="font-mono font-bold text-emerald-300">{o.cfOrderId || o.paymentId}</span>
+                                <span className="font-mono font-bold text-emerald-300 select-all">{o.cfOrderId || o.paymentId}</span>
                               </div>
+                              {o.paymentTxnId && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-amber-200/70">Txn ID:</span>
+                                  <span className="font-mono font-bold text-emerald-300 select-all">{o.paymentTxnId}</span>
+                                </div>
+                              )}
+                              {o.paymentModeDetails && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-amber-200/70">Method Details:</span>
+                                  <span className="font-sans font-bold text-emerald-300">{o.paymentModeDetails}</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -906,13 +1057,13 @@ function AdminPage() {
                                 <span className="text-amber-100">
                                   {it.qty}x {it.name}
                                 </span>
-                                <span className="text-amber-400 font-bold">
+                                <span className="text-amber-400 font-bold font-sans">
                                   {it.price}
                                 </span>
                               </div>
                             ))}
                           </div>
-                          <div className="mt-2 text-right text-sm font-bold text-amber-300">
+                          <div className="mt-2 text-right text-sm font-bold text-amber-300 font-sans">
                             Total: ₹{o.total}
                           </div>
                         </div>
@@ -979,11 +1130,10 @@ function AdminPage() {
 
                         <button
                           onClick={() => toggleCouponStatus(c.id, c.isActive)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition ${
-                            c.isActive
+                          className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition ${c.isActive
                               ? "bg-emerald-950 text-emerald-300 border border-emerald-500/30"
                               : "bg-stone-800 text-stone-400 border border-stone-700"
-                          }`}
+                            }`}
                         >
                           {c.isActive ? <ToggleRight className="w-4 h-4 text-emerald-400" /> : <ToggleLeft className="w-4 h-4" />}
                           <span>{c.isActive ? "Active" : "Disabled"}</span>
@@ -1049,11 +1199,10 @@ function AdminPage() {
                   {filteredMessages.map((m) => (
                     <div
                       key={m.id}
-                      className={`p-5 rounded-3xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                        m.status === "unread"
+                      className={`p-5 rounded-3xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${m.status === "unread"
                           ? "bg-amber-950/30 border-amber-500/40 shadow-md"
                           : "bg-stone-900/80 border-amber-500/15"
-                      }`}
+                        }`}
                     >
                       <div className="space-y-1 flex-1 min-w-0">
                         <div className="flex items-center gap-3">
@@ -1201,11 +1350,10 @@ function AdminPage() {
                 <div className="p-3 bg-stone-950 border border-amber-500/10 rounded-xl text-xs flex items-center justify-between">
                   <span className="text-amber-200/70">Current COD Payment Status:</span>
                   <span
-                    className={`font-bold px-3 py-1 rounded-full text-[10px] uppercase tracking-wider ${
-                      storeSettings.isCodEnabled
+                    className={`font-bold px-3 py-1 rounded-full text-[10px] uppercase tracking-wider ${storeSettings.isCodEnabled
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                         : "bg-rose-500/20 text-rose-400 border border-rose-500/40"
-                    }`}
+                      }`}
                   >
                     {storeSettings.isCodEnabled ? "Available (Enabled)" : "Disabled (Unavailable)"}
                   </span>
@@ -1827,6 +1975,115 @@ function AdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-xl shadow-2xl relative space-y-4 text-xs" data-lenis-prevent>
+            <div className="flex items-center justify-between border-b border-amber-500/10 pb-3">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Order Specifications</span>
+                <h3 className="font-serif text-xl font-bold text-amber-100 mt-0.5">Order ID: {selectedOrder.id}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="text-amber-200/50 hover:text-amber-100 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* General info */}
+            <div className="grid grid-cols-2 gap-4 bg-stone-950/80 p-4 rounded-2xl border border-amber-500/15">
+              <div>
+                <span className="text-amber-200/50 block">Customer Name:</span>
+                <span className="text-amber-100 font-bold">{selectedOrder.customerName}</span>
+              </div>
+              <div>
+                <span className="text-amber-200/50 block">Placed Date:</span>
+                <span className="text-amber-100">{selectedOrder.createdAt}</span>
+              </div>
+              <div>
+                <span className="text-amber-200/50 block">Customer Email:</span>
+                <span className="text-amber-100 font-mono">{selectedOrder.customerEmail}</span>
+              </div>
+              <div>
+                <span className="text-amber-200/50 block">Customer Phone:</span>
+                <span className="text-amber-100 font-mono">{selectedOrder.customerPhone}</span>
+              </div>
+            </div>
+
+            {/* Delivery Details */}
+            <div className="space-y-1">
+              <span className="text-amber-200/50 uppercase font-semibold text-[10px] tracking-wider block">Shipping Address</span>
+              <p className="bg-stone-950 p-3 rounded-2xl border border-amber-500/10 text-amber-100 leading-relaxed font-sans">
+                {selectedOrder.shippingAddress}
+              </p>
+            </div>
+
+            {/* Payment Info */}
+            <div className="space-y-1.5">
+              <span className="text-amber-200/50 uppercase font-semibold text-[10px] tracking-wider block">Payment & Settlement Details</span>
+              <div className="bg-stone-950 p-4 rounded-2xl border border-amber-500/10 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-amber-200/70">Payment Method:</span>
+                  <span className="font-bold text-amber-100">{selectedOrder.paymentMethod === "Cashfree" ? "Cashfree Online Payment" : "Cash on Delivery (COD)"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-200/70">Payment Status:</span>
+                  <span className={`font-bold ${selectedOrder.paymentStatus === "Paid" ? "text-emerald-400" : "text-amber-400"}`}>{selectedOrder.paymentStatus || "Pending"}</span>
+                </div>
+
+                {selectedOrder.paymentMethod === "Cashfree" && (
+                  <div className="pt-2 border-t border-amber-500/10 space-y-1.5">
+                    <div className="flex justify-between font-mono text-[11px]">
+                      <span className="text-amber-200/50 font-sans">CF Order ID:</span>
+                      <span className="text-emerald-300 font-bold select-all">{selectedOrder.cfOrderId || selectedOrder.paymentId}</span>
+                    </div>
+                    {selectedOrder.paymentTxnId && (
+                      <div className="flex justify-between font-mono text-[11px]">
+                        <span className="text-amber-200/50 font-sans">CF Txn ID:</span>
+                        <span className="text-emerald-300 font-bold select-all">{selectedOrder.paymentTxnId}</span>
+                      </div>
+                    )}
+                    {selectedOrder.paymentModeDetails && (
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-amber-200/50">Instrument Details:</span>
+                        <span className="text-emerald-300 font-bold">{selectedOrder.paymentModeDetails}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="space-y-1.5">
+              <span className="text-amber-200/50 uppercase font-semibold text-[10px] tracking-wider block">Items Summary</span>
+              <div className="max-h-36 overflow-y-auto space-y-1.5 bg-stone-950 p-3 rounded-2xl border border-amber-500/10" data-lenis-prevent>
+                {selectedOrder.items.map((it, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-stone-900/50 p-2 rounded-xl border border-amber-500/5">
+                    <span className="text-amber-100">{it.qty}x {it.name}</span>
+                    <span className="text-amber-400 font-bold font-sans">{it.price}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-right text-sm font-bold text-amber-300 pr-2 font-sans">
+                Grand Total: ₹{selectedOrder.total.toLocaleString("en-IN")}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-amber-500/10">
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl uppercase tracking-wider transition cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useOrders } from "@/hooks/use-orders";
+import { verifyCashfreeOrderFn } from "@/lib/cashfree-server";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   ShoppingBag,
@@ -19,10 +21,76 @@ export const Route = createFileRoute("/orders")({
   component: MyOrdersPage,
 });
 
+function parseDateString(dateStr: string): Date {
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  
+  try {
+    const parts = dateStr.trim().split(/\s+/);
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const monthStr = parts[1];
+      const year = parseInt(parts[2]);
+      
+      const months: Record<string, number> = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+      };
+      const month = months[monthStr.toLowerCase().substring(0, 3)] ?? 0;
+      return new Date(year, month, day);
+    }
+  } catch (e) {}
+  return new Date();
+}
+
+function addBusinessDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  let added = 0;
+  while (added < days) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sat/Sun
+      added++;
+    }
+  }
+  return result;
+}
+
+const formatDateToIN = (date: Date): string => {
+  return date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+};
+
 function MyOrdersPage() {
   const { user, loading: authLoading } = useAuth();
-  const { orders, loading: ordersLoading } = useOrders();
+  const { orders, loading: ordersLoading, updateOrderPayment } = useOrders();
   const navigate = useNavigate();
+
+  // Auto-verify pending Cashfree orders to catch recovery link payments
+  useEffect(() => {
+    if (!ordersLoading && orders.length > 0) {
+      const pendingCashfree = orders.filter(
+        (o) => o.paymentMethod === "Cashfree" && o.paymentStatus === "Pending" && o.paymentId
+      );
+
+      pendingCashfree.forEach(async (order) => {
+        try {
+          console.log(`[Auto-verify] Checking payment status for order ${order.id} (Cashfree ID: ${order.paymentId})...`);
+          const verifyRes = await verifyCashfreeOrderFn({
+            data: { orderId: order.paymentId! },
+          });
+          if (verifyRes.success && (verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID")) {
+            await updateOrderPayment(order.id, "Paid", order.paymentId, verifyRes.paymentTxnId, verifyRes.paymentModeDetails);
+            toast.success(`Payment verified! Order ${order.id} status updated to Paid.`);
+          }
+        } catch (err) {
+          console.warn(`[Auto-verify] Failed to check status for order ${order.id}:`, err);
+        }
+      });
+    }
+  }, [orders, ordersLoading]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -121,16 +189,52 @@ function MyOrdersPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {myOrders.map((order) => (
-              <div
-                key={order.id}
-                className="rounded-[2.5rem] border border-gold/20 bg-ivory shadow-luxe p-6 md:p-8 space-y-6"
-              >
+            {myOrders.map((order) => {
+              const placedDate = order.placedAt || order.createdAt;
+              const dPlaced = parseDateString(placedDate);
+
+              let dProcessing = order.processingAt ? parseDateString(order.processingAt) : null;
+              let dShipped = order.shippedAt ? parseDateString(order.shippedAt) : null;
+              let dDelivered = order.deliveredAt ? parseDateString(order.deliveredAt) : null;
+
+              // Calculate default fallbacks for completed stages
+              if (["Processing", "Shipped", "Delivered"].includes(order.status) && !dProcessing) {
+                dProcessing = addBusinessDays(dPlaced, 1);
+              }
+              if (["Shipped", "Delivered"].includes(order.status) && !dShipped) {
+                dShipped = addBusinessDays(dPlaced, 2);
+              }
+              if (order.status === "Delivered" && !dDelivered) {
+                dDelivered = addBusinessDays(dPlaced, 5);
+              }
+
+              // Ensure chronological ordering (no step can be in the future relative to a completed subsequent step)
+              if (dDelivered) {
+                if (dShipped && dShipped > dDelivered) dShipped = new Date(dDelivered);
+                if (dProcessing && dProcessing > dDelivered) dProcessing = new Date(dDelivered);
+              }
+              if (dShipped) {
+                if (dProcessing && dProcessing > dShipped) dProcessing = new Date(dShipped);
+              }
+
+              const processingDate = dProcessing ? formatDateToIN(dProcessing) : null;
+              const shippedDate = dShipped ? formatDateToIN(dShipped) : null;
+              const deliveredDate = dDelivered ? formatDateToIN(dDelivered) : null;
+
+              return (
+                <div
+                  key={order.id}
+                  className="rounded-[2.5rem] border border-gold/20 bg-ivory shadow-luxe p-6 md:p-8 space-y-6"
+                >
                 {/* Order Top Panel */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-gold/15">
-                  <div className="space-y-1">
+                  <div className="space-y-1 text-left">
                     <span className="text-[10px] text-forest/50 font-semibold uppercase tracking-wider">Order Reference</span>
-                    <h3 className="font-display text-xl text-forest font-bold">{order.id}</h3>
+                    <h3 className="font-sans text-base text-forest font-bold tracking-wide">
+                      {order.id.startsWith("ORD-") || order.id.startsWith("TY-")
+                        ? order.id
+                        : `#${order.id.slice(-6).toUpperCase()}`}
+                    </h3>
                   </div>
                   <div className="flex flex-wrap gap-3 items-center">
                     <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-gold/25 text-xs text-forest/80 font-medium">
@@ -143,6 +247,102 @@ function MyOrdersPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Progress Stepper */}
+                {order.status === "Cancelled" ? (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3 text-red-800 text-xs">
+                    <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                    <div className="text-left">
+                      <span className="font-bold uppercase tracking-wider block text-[10px]">Order Cancelled</span>
+                      <p className="text-red-700/80 mt-0.5">This order has been cancelled and will not be processed.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-6 border-b border-gold/15">
+                    {/* Stepper container */}
+                    <div className="relative flex items-center justify-between w-full max-w-lg mx-auto isolate px-4">
+                      {/* Connecting Line Background */}
+                      <div className="absolute left-4 right-4 top-4 h-[2px] bg-stone-200/80 -z-10" />
+                      
+                      {/* Connecting Line Progress */}
+                      <div 
+                        className="absolute left-4 top-4 h-[2px] bg-gold transition-all duration-500 -z-10" 
+                        style={{
+                          width: 
+                            order.status === "Delivered" ? "calc(100% - 32px)" :
+                            order.status === "Shipped" ? "66.6%" :
+                            order.status === "Processing" ? "33.3%" : "0%"
+                        }}
+                      />
+
+                      {/* Step 1: Placed */}
+                      <div className="flex flex-col items-center gap-1.5 text-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${
+                          ["Pending", "Processing", "Shipped", "Delivered"].includes(order.status)
+                            ? "bg-gold border-gold text-ivory shadow-md shadow-gold/20"
+                            : "bg-white border-stone-200 text-stone-400"
+                        }`}>
+                          ✓
+                        </div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-forest/70 block">Placed</span>
+                        {placedDate && (
+                          <span className="text-[9px] text-forest/50 font-semibold font-sans block">{placedDate}</span>
+                        )}
+                      </div>
+
+                      {/* Step 2: Processing */}
+                      <div className="flex flex-col items-center gap-1.5 text-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${
+                          ["Processing", "Shipped", "Delivered"].includes(order.status)
+                            ? "bg-gold border-gold text-ivory shadow-md shadow-gold/20"
+                            : order.status === "Pending"
+                              ? "bg-white border-gold text-gold animate-pulse"
+                              : "bg-white border-stone-200 text-stone-400"
+                        }`}>
+                          {["Processing", "Shipped", "Delivered"].includes(order.status) ? "✓" : "2"}
+                        </div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-forest/70 block">Processing</span>
+                        {processingDate && (
+                          <span className="text-[9px] text-forest/50 font-semibold font-sans block">{processingDate}</span>
+                        )}
+                      </div>
+
+                      {/* Step 3: Shipped */}
+                      <div className="flex flex-col items-center gap-1.5 text-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${
+                          ["Shipped", "Delivered"].includes(order.status)
+                            ? "bg-gold border-gold text-ivory shadow-md shadow-gold/20"
+                            : order.status === "Processing"
+                              ? "bg-white border-gold text-gold animate-pulse"
+                              : "bg-white border-stone-200 text-stone-400"
+                        }`}>
+                          {["Shipped", "Delivered"].includes(order.status) ? "✓" : "3"}
+                        </div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-forest/70 block">Shipped</span>
+                        {shippedDate && (
+                          <span className="text-[9px] text-forest/50 font-semibold font-sans block">{shippedDate}</span>
+                        )}
+                      </div>
+
+                      {/* Step 4: Delivered */}
+                      <div className="flex flex-col items-center gap-1.5 text-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${
+                          order.status === "Delivered"
+                            ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-250"
+                            : order.status === "Shipped"
+                              ? "bg-white border-gold text-gold animate-pulse"
+                              : "bg-white border-stone-200 text-stone-400"
+                        }`}>
+                          {order.status === "Delivered" ? "✓" : "4"}
+                        </div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-forest/70 block">Delivered</span>
+                        {deliveredDate && (
+                          <span className="text-[9px] text-forest/50 font-semibold font-sans block">{deliveredDate}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Items Panel */}
                 <div className="space-y-4">
@@ -161,7 +361,7 @@ function MyOrdersPage() {
                           Quantity: {item.qty} · Price: {item.price}
                         </p>
                       </div>
-                      <div className="font-display text-base text-forest font-bold">
+                      <div className="font-sans text-base text-forest font-bold">
                         ₹{(parseInt(item.price.replace(/[^\d]/g, "")) * item.qty).toLocaleString("en-IN")}
                       </div>
                     </div>
@@ -180,12 +380,25 @@ function MyOrdersPage() {
                       {order.shippingAddress}
                     </p>
                   </div>
-                  <div className="flex flex-col justify-between items-end gap-4 text-right">
+                  <div className="flex flex-col justify-between items-end gap-4 text-right font-sans">
                     <div>
-                      <span className="text-[10px] text-forest/50 font-semibold uppercase tracking-wider">Total amount (COD)</span>
-                      <div className="font-display text-3xl text-forest font-bold mt-1">
+                      <span className="text-[10px] text-forest/50 font-semibold uppercase tracking-wider">
+                        Total amount ({order.paymentMethod === "Cashfree" ? "Online Pay" : "COD"})
+                      </span>
+                      <div className="font-sans text-3xl text-forest font-bold mt-1">
                         ₹{order.total.toLocaleString("en-IN")}
                       </div>
+                      {order.paymentMethod === "Cashfree" && (
+                        <div className="mt-1.5 flex justify-end">
+                          <span className={`px-2 py-0.5 rounded-[4px] text-[9px] font-bold uppercase tracking-wider border ${
+                            order.paymentStatus === "Paid"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-250"
+                              : "bg-amber-50 text-amber-700 border-amber-250"
+                          }`}>
+                            Payment: {order.paymentStatus || "Pending"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleWhatsAppQuery(order.id)}
@@ -196,7 +409,7 @@ function MyOrdersPage() {
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>

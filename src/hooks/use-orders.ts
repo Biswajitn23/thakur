@@ -36,6 +36,12 @@ export interface OrderItem {
   cfOrderId?: string;
   paymentId?: string;
   userId?: string;
+  placedAt?: string;
+  processingAt?: string;
+  shippedAt?: string;
+  deliveredAt?: string;
+  paymentTxnId?: string;
+  paymentModeDetails?: string;
 }
 
 
@@ -93,14 +99,16 @@ export function useOrders() {
   const createOrder = async (
     orderData: Omit<OrderItem, "id" | "createdAt" | "status">
   ): Promise<string> => {
+    const todayStr = new Date().toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
     const newOrderPayload = {
       ...orderData,
       status: "Pending" as OrderStatus,
-      createdAt: new Date().toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
+      createdAt: todayStr,
+      placedAt: todayStr,
     };
 
     if (isFirebaseConfigured && db) {
@@ -124,11 +132,40 @@ export function useOrders() {
   };
 
   const updateOrderStatus = async (id: string, status: OrderStatus) => {
+    const todayStr = new Date().toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
+    const updateFields: any = { status };
+    if (status === "Pending") {
+      updateFields.placedAt = todayStr;
+    }
+    if (status === "Processing") {
+      updateFields.processingAt = todayStr;
+    }
+    if (status === "Shipped") {
+      updateFields.shippedAt = todayStr;
+      const order = orders.find((o) => o.id === id);
+      if (order && !order.processingAt) {
+        updateFields.processingAt = todayStr;
+      }
+    }
+    if (status === "Delivered") {
+      updateFields.deliveredAt = todayStr;
+      const order = orders.find((o) => o.id === id);
+      if (order) {
+        if (!order.shippedAt) updateFields.shippedAt = todayStr;
+        if (!order.processingAt) updateFields.processingAt = todayStr;
+      }
+    }
+
     if (isFirebaseConfigured && db) {
       const docRef = doc(db, "orders", id);
-      await updateDoc(docRef, { status });
+      await updateDoc(docRef, updateFields);
     } else {
-      const updated = orders.map((o) => (o.id === id ? { ...o, status } : o));
+      const updated = orders.map((o) => (o.id === id ? { ...o, ...updateFields } : o));
       setOrders(updated);
       if (typeof window !== "undefined") {
         localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(updated));
@@ -148,13 +185,70 @@ export function useOrders() {
     }
   };
 
-  const updateOrderTracking = async (id: string, courierName: string, trackingNumber: string) => {
+  const updateOrderPayment = async (
+    id: string,
+    paymentStatus: "Paid" | "Pending" | "Failed",
+    paymentId?: string,
+    paymentTxnId?: string,
+    paymentModeDetails?: string
+  ) => {
+    const todayStr = new Date().toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
     if (isFirebaseConfigured && db) {
       const docRef = doc(db, "orders", id);
-      await updateDoc(docRef, { courierName, trackingNumber, status: "Shipped" });
+      const updateData: any = { paymentStatus };
+      if (paymentId) updateData.paymentId = paymentId;
+      if (paymentTxnId) updateData.paymentTxnId = paymentTxnId;
+      if (paymentModeDetails) updateData.paymentModeDetails = paymentModeDetails;
+      if (paymentStatus === "Paid") {
+        updateData.status = "Processing" as OrderStatus;
+        updateData.processingAt = todayStr;
+      }
+      await updateDoc(docRef, updateData);
+    } else {
+      const updated = orders.map((o) => {
+        if (o.id === id) {
+          const newOrder: any = { ...o, paymentStatus };
+          if (paymentId) newOrder.paymentId = paymentId;
+          if (paymentTxnId) newOrder.paymentTxnId = paymentTxnId;
+          if (paymentModeDetails) newOrder.paymentModeDetails = paymentModeDetails;
+          if (paymentStatus === "Paid") {
+            newOrder.status = "Processing" as OrderStatus;
+            newOrder.processingAt = todayStr;
+          }
+          return newOrder;
+        }
+        return o;
+      });
+      setOrders(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(updated));
+      }
+    }
+  };
+
+  const updateOrderTracking = async (id: string, courierName: string, trackingNumber: string) => {
+    const todayStr = new Date().toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    
+    const updateFields: any = { courierName, trackingNumber, status: "Shipped" as OrderStatus, shippedAt: todayStr };
+    const order = orders.find((o) => o.id === id);
+    if (order && !order.processingAt) {
+      updateFields.processingAt = todayStr;
+    }
+
+    if (isFirebaseConfigured && db) {
+      const docRef = doc(db, "orders", id);
+      await updateDoc(docRef, updateFields);
     } else {
       const updated = orders.map((o) =>
-        o.id === id ? { ...o, courierName, trackingNumber, status: "Shipped" as OrderStatus } : o
+        o.id === id ? { ...o, ...updateFields } : o
       );
       setOrders(updated);
       if (typeof window !== "undefined") {
@@ -168,6 +262,7 @@ export function useOrders() {
     loading,
     createOrder,
     updateOrderStatus,
+    updateOrderPayment,
     updateOrderTracking,
     deleteOrder,
   };

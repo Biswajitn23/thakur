@@ -1,13 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 
 export type CartItem = { name: string; price: string; img: string; qty: number };
 
 export function parsePrice(price: string) {
   return Number(price.replace(/[^\d.]/g, "")) || 0;
+}
+
+export interface AppliedCouponType {
+  code: string;
+  discountValue: number;
+  discountType: "percent" | "flat";
+  minOrderValue?: number;
 }
 
 export interface CartContextType {
@@ -29,6 +36,8 @@ export interface CartContextType {
   isQuizOpen: boolean;
   openQuiz: () => void;
   closeQuiz: () => void;
+  appliedCoupon: AppliedCouponType | null;
+  setAppliedCoupon: (coupon: AppliedCouponType | null) => void;
 }
 
 export const CartContext = createContext<CartContextType | null>(null);
@@ -40,6 +49,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<CartItem[]>([]);
   const [isWishlistOpen, setWishlistOpen] = useState(false);
   const [isQuizOpen, setQuizOpen] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponType | null>(null);
 
   // Use refs to prevent save-before-load race conditions
   const cartLoadedRef = useRef(false);
@@ -54,6 +64,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       wishlistLoadedRef.current = false;
       setItems([]);
       setWishlist([]);
+      setAppliedCoupon(null);
     }
   }, [user?.uid]);
 
@@ -63,6 +74,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) {
       setItems([]);
       setWishlist([]);
+      setAppliedCoupon(null);
       return;
     }
 
@@ -86,8 +98,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const cartDoc = await getDoc(doc(db, "carts", userId));
           if (cartDoc.exists()) {
             loadedCart = cartDoc.data().items || [];
-          } else {
-            // Seed Firestore with local cart if it exists
+          } else if (loadedCart.length > 0) {
+            // Seed Firestore with local cart ONLY if not empty
             await setDoc(doc(db, "carts", userId), { items: loadedCart }, { merge: true });
           }
         } catch (err) {
@@ -114,8 +126,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const wishlistDoc = await getDoc(doc(db, "wishlists", userId));
           if (wishlistDoc.exists()) {
             loadedWishlist = wishlistDoc.data().items || [];
-          } else {
-            // Seed Firestore with local wishlist
+          } else if (loadedWishlist.length > 0) {
+            // Seed Firestore with local wishlist ONLY if not empty
             await setDoc(doc(db, "wishlists", userId), { items: loadedWishlist }, { merge: true });
           }
         } catch (err) {
@@ -137,9 +149,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(userCartKey, JSON.stringify(items));
 
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, "carts", user.uid), { items }, { merge: true }).catch((err) =>
-        console.warn("Failed to save cart to Firestore:", err)
-      );
+      if (items.length === 0) {
+        deleteDoc(doc(db, "carts", user.uid)).catch((err) =>
+          console.warn("Failed to delete empty cart from Firestore:", err)
+        );
+      } else {
+        setDoc(doc(db, "carts", user.uid), { items }, { merge: true }).catch((err) =>
+          console.warn("Failed to save cart to Firestore:", err)
+        );
+      }
     }
   }, [items, user?.uid]);
 
@@ -151,9 +169,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(userWishlistKey, JSON.stringify(wishlist));
 
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, "wishlists", user.uid), { items: wishlist }, { merge: true }).catch((err) =>
-        console.warn("Failed to save wishlist to Firestore:", err)
-      );
+      if (wishlist.length === 0) {
+        deleteDoc(doc(db, "wishlists", user.uid)).catch((err) =>
+          console.warn("Failed to delete empty wishlist from Firestore:", err)
+        );
+      } else {
+        setDoc(doc(db, "wishlists", user.uid), { items: wishlist }, { merge: true }).catch((err) =>
+          console.warn("Failed to save wishlist to Firestore:", err)
+        );
+      }
     }
   }, [wishlist, user?.uid]);
 
@@ -189,6 +213,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   function clearCart() {
     setItems([]);
+    setAppliedCoupon(null);
   }
 
   function toggleWishlist(p: { name: string; price: string; img: string }) {
@@ -212,6 +237,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + parsePrice(i.price) * i.qty, 0);
 
+  // Validate applied coupon if subtotal changes
+  useEffect(() => {
+    if (appliedCoupon && appliedCoupon.minOrderValue && subtotal < appliedCoupon.minOrderValue) {
+      setAppliedCoupon(null);
+      toast.error(`Coupon "${appliedCoupon.code}" removed as order value fell below ₹${appliedCoupon.minOrderValue}.`);
+    }
+  }, [subtotal, appliedCoupon]);
+
   return (
     <CartContext.Provider
       value={{
@@ -233,6 +266,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         isQuizOpen,
         openQuiz: () => setQuizOpen(true),
         closeQuiz: () => setQuizOpen(false),
+        appliedCoupon,
+        setAppliedCoupon,
       }}
     >
       {children}

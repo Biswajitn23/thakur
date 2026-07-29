@@ -160,7 +160,8 @@ export function useProducts() {
             };
           });
           if (fetched.length === 0) {
-            // Initial seed
+            // Seed mock fallback products to Firestore to initialize the DB collection
+            seedProductsToFirestore();
             setProducts(
               DEFAULT_PRODUCTS.map((p, idx) => ({ ...p, id: `def-${idx}` }))
             );

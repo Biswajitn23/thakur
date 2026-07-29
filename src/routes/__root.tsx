@@ -129,9 +129,19 @@ import { CartProvider } from "../context/cart-context";
 import { Toaster } from "sonner";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
+import { useRouterState } from "@tanstack/react-router";
+
+// Routes where Lenis smooth scroll should be DISABLED (use native browser scroll)
+const NO_LENIS_ROUTES = ["/checkout", "/admin"];
 
 function SmoothScroll({ children }: { children: ReactNode }) {
+  const routerState = useRouterState();
+  const pathname = routerState.location.pathname;
+  const isLenisDisabled = NO_LENIS_ROUTES.some((r) => pathname.startsWith(r));
+
   useEffect(() => {
+    if (isLenisDisabled) return; // Skip Lenis on checkout & admin — use native scroll
+
     const lenis = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -153,7 +163,7 @@ function SmoothScroll({ children }: { children: ReactNode }) {
       cancelAnimationFrame(rafId);
       lenis.destroy();
     };
-  }, []);
+  }, [isLenisDisabled]);
 
   return <>{children}</>;
 }

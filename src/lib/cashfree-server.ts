@@ -23,6 +23,8 @@ export interface VerifyCashfreeOrderResult {
   cfOrderId?: string;
   orderId?: string;
   error?: string;
+  paymentTxnId?: string;
+  paymentModeDetails?: string;
 }
 
 function getBaseUrl(): string {
@@ -166,12 +168,46 @@ export const verifyCashfreeOrderFn = createServerFn({ method: "POST" })
       const orderStatus = responseData.order_status;
       const isPaid = orderStatus === "PAID";
 
+      let paymentTxnId = "";
+      let paymentModeDetails = "";
+
+      try {
+        const paymentsResponse = await fetch(`${baseUrl}/orders/${data.orderId}/payments`, {
+          method: "GET",
+          headers,
+        });
+        if (paymentsResponse.ok) {
+          const paymentsData = await paymentsResponse.json();
+          if (Array.isArray(paymentsData) && paymentsData.length > 0) {
+            const successfulPayment = paymentsData.find(p => p.payment_status === "SUCCESS") || paymentsData[0];
+            paymentTxnId = String(successfulPayment.cf_payment_id || "");
+            
+            const method = successfulPayment.payment_method;
+            if (method) {
+              if (method.upi) {
+                paymentModeDetails = `UPI (${method.upi.upi_id || "UPI Pay"})`;
+              } else if (method.netbanking) {
+                paymentModeDetails = `Netbanking (Bank: ${method.netbanking.bank_code || "Online"})`;
+              } else if (method.card) {
+                paymentModeDetails = `Card (${method.card.card_network} ${method.card.card_type} ****${method.card.card_number?.slice(-4) || ""})`;
+              } else {
+                paymentModeDetails = Object.keys(method)[0]?.toUpperCase() || "Online";
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch detailed payment info from Cashfree:", err);
+      }
+
       return {
         success: true,
         orderStatus,
         paymentStatus: isPaid ? "Paid" : orderStatus === "FAILED" ? "Failed" : "Pending",
         cfOrderId: String(responseData.cf_order_id || responseData.order_id),
         orderId: responseData.order_id,
+        paymentTxnId,
+        paymentModeDetails,
       };
     } catch (err: any) {
       console.error("Cashfree verify order exception:", err);
