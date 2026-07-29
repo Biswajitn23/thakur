@@ -39,15 +39,21 @@ function getHeaders(): Record<string, string> {
   const appId =
     process.env.CASHFREE_APP_ID ||
     (import.meta as any).env?.CASHFREE_APP_ID ||
-    "TEST1115666809f4712729a4383c4bca86665111";
+    "";
   const secretKey =
     process.env.CASHFREE_SECRET_KEY ||
     (import.meta as any).env?.CASHFREE_SECRET_KEY ||
-    "cfsk_ma_test_30765dc08358d0eaf07f240acdda5d29_40df53ac";
+    "";
   const apiVersion =
     process.env.CASHFREE_API_VERSION ||
     (import.meta as any).env?.CASHFREE_API_VERSION ||
     "2023-08-01";
+
+  if (!appId || !secretKey) {
+    throw new Error(
+      "[Cashfree] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is not set in environment variables. Please add them to your .env file."
+    );
+  }
 
   return {
     "x-client-id": appId,

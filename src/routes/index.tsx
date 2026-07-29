@@ -166,6 +166,15 @@ function Index() {
     closeQuiz,
   } = useCartContext();
 
+  // Auto-open cart sidebar when navigating back from checkout via "Shopping Bag" step
+  useEffect(() => {
+    if (sessionStorage.getItem("open_cart_on_home") === "1") {
+      sessionStorage.removeItem("open_cart_on_home");
+      // slight delay so the page renders first
+      setTimeout(() => openCart(), 200);
+    }
+  }, []);
+
   function addItem(
     p: { name: string; price: string; img: string },
     clickEvent?: React.MouseEvent<HTMLElement>,

@@ -323,7 +323,14 @@ function FullCheckoutPage() {
         {/* Dynamic Progress Steps Subbar */}
         <div className="border-t border-gold/15 py-2 flex justify-center bg-ivory/50">
           <div className="flex items-center justify-center gap-4 text-[9px] tracking-[0.2em] text-forest/50 uppercase font-semibold">
-            <span className="text-forest/70 font-semibold">1. Shopping Bag</span>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem("open_cart_on_home", "1");
+                navigate({ to: "/" });
+              }}
+              className="text-forest/70 font-semibold hover:text-gold transition cursor-pointer hover:underline underline-offset-4"
+            >1. Shopping Bag</button>
             <span className="text-gold/60">•</span>
             <span className="text-gold font-bold underline underline-offset-4 decoration-2">2. Address & Payment</span>
             <span className="text-gold/60">•</span>

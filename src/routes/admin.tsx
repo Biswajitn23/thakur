@@ -1377,8 +1377,8 @@ function AdminPage() {
 
       {/* Add / Edit Product Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto" data-lenis-prevent>
             <h3 className="font-serif text-2xl font-bold text-amber-100 mb-4">
               {editingProduct ? "Edit Product" : "Add New Ayurvedic Product"}
             </h3>
@@ -1576,7 +1576,7 @@ function AdminPage() {
       {/* Create Coupon Modal */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
-          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-md shadow-2xl relative" data-lenis-prevent>
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto" data-lenis-prevent>
             <h3 className="font-serif text-2xl font-bold text-amber-100 mb-4">
               Create Promo Coupon
             </h3>
