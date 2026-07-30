@@ -413,13 +413,6 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
                         <div className="text-[10px] text-forest/65 truncate">
                           {user.email}
                         </div>
-                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                          user.role === "admin"
-                            ? "bg-gold/20 text-gold-dark border border-gold/30"
-                            : "bg-emerald-500/15 text-emerald-800 border border-emerald-500/30"
-                        }`}>
-                          {user.role === "admin" ? "👑 Verified Admin" : "✦ Tribe Member"}
-                        </span>
                       </div>
                     </div>
 
