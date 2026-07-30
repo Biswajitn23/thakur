@@ -18,6 +18,12 @@ import {
 import { useMessages } from "@/hooks/use-messages";
 
 export const Route = createFileRoute("/contact")({
+  head: () => ({
+    meta: [
+      { title: "Contact Us — Thakur Yograj" },
+      { name: "description", content: "Get in touch with Thakur Yograj Ayurveda. Contact us via phone, WhatsApp, email, or our contact form for support and product queries." },
+    ],
+  }),
   component: ContactPage,
 });
 

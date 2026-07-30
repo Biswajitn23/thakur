@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /orders
+Disallow: /login
+
+# Block search engine crawlers from indexing duplicate query parameters
+Disallow: /*?
+
+Sitemap: /sitemap.xml

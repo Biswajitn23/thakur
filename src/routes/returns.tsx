@@ -4,6 +4,12 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { RotateCcw, ShieldCheck, RefreshCw, ChevronRight, HelpCircle, CheckCircle, AlertCircle, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/returns")({
+  head: () => ({
+    meta: [
+      { title: "Return & Refund Policy — Thakur Yograj" },
+      { name: "description", content: "Read our stress-free 15-day return and refund policy for sealed and authentic Thakur Yograj Ayurvedic formulations." },
+    ],
+  }),
   component: ReturnsPage,
 });
 

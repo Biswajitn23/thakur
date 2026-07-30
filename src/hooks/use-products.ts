@@ -269,8 +269,17 @@ export function useProducts() {
     }
   };
 
+  const getNumericPrice = (priceStr: string): number => {
+    const num = parseInt(priceStr.replace(/[^0-9]/g, ""), 10);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const sortedProducts = [...products].sort((a, b) => {
+    return getNumericPrice(a.price) - getNumericPrice(b.price);
+  });
+
   return {
-    products,
+    products: sortedProducts,
     loading,
     addProduct,
     updateProduct,

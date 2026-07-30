@@ -4,6 +4,12 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { FileText, Shield, Scale, ChevronRight, HelpCircle, CheckCircle } from "lucide-react";
 
 export const Route = createFileRoute("/terms")({
+  head: () => ({
+    meta: [
+      { title: "Terms & Conditions — Thakur Yograj" },
+      { name: "description", content: "Read the official terms of service, conditions, and usage policies for the Thakur Yograj website and authentic Ayurvedic store." },
+    ],
+  }),
   component: TermsPage,
 });
 

@@ -47,6 +47,12 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
+  head: () => ({
+    meta: [
+      { title: "Admin Portal — Thakur Yograj" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: AdminPage,
 });
 

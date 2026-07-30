@@ -18,6 +18,12 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/orders")({
+  head: () => ({
+    meta: [
+      { title: "My Orders — Thakur Yograj" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: MyOrdersPage,
 });
 

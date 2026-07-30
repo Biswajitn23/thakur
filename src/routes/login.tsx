@@ -6,6 +6,12 @@ import { toast } from "sonner";
 import ingredientsImg from "@/assets/ingredients.jpg";
 
 export const Route = createFileRoute("/login")({
+  head: () => ({
+    meta: [
+      { title: "Login — Thakur Yograj" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: LoginPage,
 });
 

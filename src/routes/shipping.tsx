@@ -4,6 +4,12 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { Truck, Clock, ShieldCheck, MapPin, ChevronRight, HelpCircle, PackageCheck } from "lucide-react";
 
 export const Route = createFileRoute("/shipping")({
+  head: () => ({
+    meta: [
+      { title: "Shipping & Delivery Policy — Thakur Yograj" },
+      { name: "description", content: "Find out about dispatch times, delivery rates, and reliable shipping options across India for Thakur Yograj Ayurvedic products." },
+    ],
+  }),
   component: ShippingPage,
 });
 

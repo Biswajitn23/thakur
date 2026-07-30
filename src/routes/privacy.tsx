@@ -4,6 +4,12 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { ShieldCheck, Lock, EyeOff, ChevronRight, HelpCircle, Database, Server } from "lucide-react";
 
 export const Route = createFileRoute("/privacy")({
+  head: () => ({
+    meta: [
+      { title: "Privacy Policy — Thakur Yograj" },
+      { name: "description", content: "Learn how Thakur Yograj Ayurveda handles and safeguards your personal data, transaction information, and privacy security." },
+    ],
+  }),
   component: PrivacyPage,
 });
 

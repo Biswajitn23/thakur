@@ -32,6 +32,12 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/checkout")({
+  head: () => ({
+    meta: [
+      { title: "Secure Checkout — Thakur Yograj" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: FullCheckoutPage,
 });
 

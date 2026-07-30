@@ -32,6 +32,12 @@ import hairAfterComp from "@/assets/hair_after_comparison.png";
 
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Thakur Yograj — Ayurvedic Hair Oil & Pain Relief Oil" },
+      { name: "description", content: "Experience premium, 100% authentic Ayurvedic oils handcrafted by Thakur Yograj. Made in India, chemical-free hair care and natural pain relief solutions." },
+    ],
+  }),
   component: Index,
 });
 
@@ -1704,16 +1710,17 @@ function CartDrawer() {
 function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const { setConcern } = useContext(ConcernContext);
+  const { products } = useProducts();
 
   const results = query.trim()
-    ? PRODUCTS.filter(
+    ? products.filter(
       (p) =>
         p.name.toLowerCase().includes(query.toLowerCase()) ||
         p.subtitle.toLowerCase().includes(query.toLowerCase()),
     )
-    : PRODUCTS;
+    : products;
 
-  function goToProduct(p: (typeof PRODUCTS)[number]) {
+  function goToProduct(p: ProductItem) {
     setConcern(p.concern);
     onClose();
     setQuery("");
