@@ -70,6 +70,7 @@ export async function setAdminEmails(emails: string[]): Promise<void> {
   // Always update local cache too
   if (typeof window !== "undefined") {
     localStorage.setItem(LOCAL_STORAGE_ADMIN_KEY, JSON.stringify(emails));
+    window.dispatchEvent(new Event("admin-emails-updated"));
   }
 }
 
@@ -85,8 +86,10 @@ export function getCachedAdminEmails(): string[] {
 
 export function isAdminEmail(email: string | null | undefined, list?: string[]): boolean {
   if (!email) return false;
+  const emailClean = email.toLowerCase().trim();
   const emails = list ?? getCachedAdminEmails();
-  return emails.includes(email.toLowerCase().trim());
+  const lowerEmails = emails.map((e) => e.toLowerCase().trim());
+  return lowerEmails.includes(emailClean);
 }
 
 export interface AppUser {
@@ -173,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── 2. Firebase Auth state listener ────────────────────────────────────────
   useEffect(() => {
+    console.log("Firebase config status:", { isFirebaseConfigured, auth: !!auth, db: !!db });
     if (isFirebaseConfigured && auth) {
       // Set default local persistence so users stay logged in across sessions
       setPersistence(auth, browserLocalPersistence).catch((err) =>
@@ -240,12 +244,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Fallback local-storage demo mode
       const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
       if (savedUser) {
-        try { setUser(JSON.parse(savedUser)); } catch { setUser(null); }
+        try {
+          const parsed = JSON.parse(savedUser) as AppUser;
+          // Re-evaluate role on boot using cached admin list
+          const role: UserRole = isAdminEmail(parsed.email, getCachedAdminEmails()) ? "admin" : "customer";
+          setUser({ ...parsed, role });
+        } catch {
+          setUser(null);
+        }
       }
       authReady.current = true;
       adminListReady.current = true;
       setLoading(false);
     }
+  }, []);
+
+  // Synchronize admin emails state and user role on local custom event
+  useEffect(() => {
+    const handleUpdate = () => {
+      const fresh = getCachedAdminEmails();
+      setAdminEmailsState(fresh);
+      adminEmailsRef.current = fresh;
+      setUser((prev) => {
+        if (!prev) return prev;
+        const role: UserRole = isAdminEmail(prev.email, fresh) ? "admin" : "customer";
+        return role !== prev.role ? { ...prev, role } : prev;
+      });
+    };
+
+    window.addEventListener("admin-emails-updated", handleUpdate);
+    return () => window.removeEventListener("admin-emails-updated", handleUpdate);
   }, []);
 
   const saveDemoUser = (newUser: AppUser | null) => {

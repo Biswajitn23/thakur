@@ -21,22 +21,20 @@ const DEFAULT_SETTINGS: StoreSettings = {
 };
 
 export function useStoreSettings() {
-  const [settings, setSettings] = useState<StoreSettings>(() => {
+  const [settings, setSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Load local storage fallback on client mount
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
       if (saved) {
         try {
-          return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-        } catch {
-          return DEFAULT_SETTINGS;
-        }
+          setSettings((prev) => ({ ...prev, ...JSON.parse(saved) }));
+        } catch { /* ignore */ }
       }
     }
-    return DEFAULT_SETTINGS;
-  });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
     if (isFirebaseConfigured && db) {
       const unsub = onSnapshot(
         doc(db, "config", "storeSettings"),

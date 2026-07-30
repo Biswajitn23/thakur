@@ -9,8 +9,10 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
 export type OrderStatus =
   | "Pending"
@@ -51,10 +53,22 @@ const LOCAL_STORAGE_ORDERS_KEY = "thakur_custom_orders";
 export function useOrders() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (isFirebaseConfigured && db) {
-      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      let q = query(collection(db, "orders"));
+
+      // If user is logged in and not an admin, query only their own orders
+      if (user && user.role !== "admin") {
+        q = query(collection(db, "orders"), where("userId", "==", user.uid));
+      } else if (!user) {
+        // If not logged in, they can't read any database orders
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -62,7 +76,15 @@ export function useOrders() {
             id: doc.id,
             ...(doc.data() as Omit<OrderItem, "id">),
           }));
-          setOrders(fetched);
+
+          // Sort in memory by parsed date in descending order (newest first)
+          const sorted = fetched.sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime() || 0;
+            const dateB = new Date(b.createdAt).getTime() || 0;
+            return dateB - dateA;
+          });
+
+          setOrders(sorted);
           setLoading(false);
         },
         (error) => {
@@ -74,7 +96,7 @@ export function useOrders() {
     } else {
       loadLocalOrders();
     }
-  }, []);
+  }, [user]);
 
   const loadLocalOrders = () => {
     if (typeof window === "undefined") return;

@@ -61,7 +61,7 @@ function AdminPage() {
   const { products, addProduct, updateProduct, deleteProduct } = useProducts();
   const { orders, updateOrderStatus, updateOrderPayment, updateOrderTracking, deleteOrder } = useOrders();
   const { coupons, addCoupon, toggleCouponStatus, deleteCoupon } = useCoupons();
-  const { messages, updateMessageStatus, deleteMessage } = useMessages();
+  const { messages, updateMessageStatus, deleteMessage } = useMessages(true);
   const { settings: storeSettings, updateCodSetting, updateStoreSettings } = useStoreSettings();
 
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "coupons" | "messages" | "subscribers" | "settings">("overview");
@@ -71,29 +71,51 @@ function AdminPage() {
   const [subscriberQuery, setSubscriberQuery] = useState("");
 
   useEffect(() => {
-    if (isFirebaseConfigured && db) {
-      const q = query(collection(db, "newsletter_subscribers"), orderBy("createdAt", "desc"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            email: data.email || "",
-            date: data.date || new Date().toLocaleDateString("en-IN"),
-          };
-        });
-        setSubscribers(fetched);
-      });
+    if (isFirebaseConfigured && db && isAdmin) {
+      const q = query(collection(db, "newsletter_subscribers"));
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const fetched = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              email: data.email || "",
+              date: data.date || new Date().toLocaleDateString("en-IN"),
+              createdAt: data.createdAt,
+            };
+          });
+
+          // Sort in-memory (newest first)
+          const sorted = fetched.sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+
+          setSubscribers(sorted);
+        },
+        (error) => {
+          console.error("Firestore subscribers read error:", error);
+          loadLocalSubscribers();
+        }
+      );
       return () => unsubscribe();
     } else {
-      const saved = localStorage.getItem("thakur_newsletter_subscribers");
-      if (saved) {
-        try {
-          const list: string[] = JSON.parse(saved);
-          setSubscribers(list.map((e) => ({ email: e, date: new Date().toLocaleDateString("en-IN") })));
-        } catch { }
-      }
+      loadLocalSubscribers();
     }
-  }, []);
+  }, [isAdmin]);
+
+  const loadLocalSubscribers = () => {
+    const saved = localStorage.getItem("thakur_newsletter_subscribers");
+    if (saved) {
+      try {
+        const list: string[] = JSON.parse(saved);
+        setSubscribers(list.map((e) => ({ email: e, date: new Date().toLocaleDateString("en-IN") })));
+      } catch { }
+    } else {
+      setSubscribers([]);
+    }
+  };
 
   const handleExportGoDaddyCSV = () => {
     if (subscribers.length === 0) {
@@ -120,15 +142,29 @@ function AdminPage() {
     if (!email || !email.includes("@")) return;
     if (adminEmails.includes(email)) { setNewAdminEmail(""); return; }
     setAdminSaving(true);
-    await setAdminEmails([...adminEmails, email]);
-    setAdminSaving(false);
-    setNewAdminEmail("");
+    try {
+      await setAdminEmails([...adminEmails, email]);
+      toast.success(`Successfully added ${email} to admin whitelist!`);
+      setNewAdminEmail("");
+    } catch (err: any) {
+      console.error("Failed to add admin email:", err);
+      toast.error(`Failed to add admin email: ${err.message || err}`);
+    } finally {
+      setAdminSaving(false);
+    }
   };
 
   const handleRemoveAdminEmail = async (email: string) => {
     setAdminSaving(true);
-    await setAdminEmails(adminEmails.filter((e) => e !== email));
-    setAdminSaving(false);
+    try {
+      await setAdminEmails(adminEmails.filter((e) => e !== email));
+      toast.success(`Successfully removed ${email} from admin whitelist!`);
+    } catch (err: any) {
+      console.error("Failed to remove admin email:", err);
+      toast.error(`Failed to remove admin: ${err.message || err}`);
+    } finally {
+      setAdminSaving(false);
+    }
   };
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -416,6 +452,16 @@ function AdminPage() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-amber-50 flex flex-col font-sans">
+      {!isAdmin && (
+        <div className="bg-amber-500/10 border-b border-amber-500/35 px-6 py-3 flex items-center justify-between text-xs text-amber-200 font-semibold shadow-inner">
+          <div className="flex items-center gap-2.5">
+            <span className="text-base">⚠️</span>
+            <span>
+              <strong>Not Whitelisted:</strong> You are currently viewing local mock data. Please add your email (<strong>{user?.email || "your email"}</strong>) to the Admin Whitelist in the Settings/Overview tab to load live subscribers.
+            </span>
+          </div>
+        </div>
+      )}
       {/* Top Navbar */}
       <header className="border-b border-amber-500/25 bg-stone-900/95 backdrop-blur-xl px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-xl">
         <div className="flex items-center gap-4">
@@ -590,6 +636,13 @@ function AdminPage() {
             <Database className="w-4 h-4" />
             <span>Settings</span>
           </button>
+          <div className="pt-4 border-t border-amber-500/10 text-[10px] text-amber-200/40 space-y-1.5 px-4 font-mono mt-4">
+            <div className="text-[9px] uppercase tracking-wider text-amber-400/60 font-semibold mb-1">System Status</div>
+            <div>User: <span className="text-amber-100">{user ? user.email : "Not Logged In"}</span></div>
+            <div>Role: <span className="text-amber-100">{user ? user.role : "Guest"}</span></div>
+            <div>isAdmin: <span className={isAdmin ? "text-emerald-400 font-bold" : "text-amber-400"}>{isAdmin ? "True" : "False"}</span></div>
+            <div>Firebase: <span className="text-amber-100">{isFirebaseConfigured ? "Connected" : "Offline"}</span></div>
+          </div>
         </aside>
 
         {/* Content Area */}

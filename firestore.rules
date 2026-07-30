@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Admin settings (who is admin) ─────────────────────────────
+    // Anyone can READ (app needs it to check admin role on login)
+    // Only existing admins can WRITE (or anyone if the list is empty/non-existent)
+    match /config/adminSettings {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        resource == null || 
+        !("emails" in resource.data) || 
+        resource.data.emails.size() == 0 || 
+        request.auth.token.email in resource.data.emails
+      );
+    }
+
+    // ── Store settings (GST, delivery fee, COD toggles) ────────────
+    // Anyone can read store settings at checkout
+    // Only admins can update configuration settings
+    match /config/storeSettings {
+      allow read: if true;
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // ── Products (public catalog) ─────────────────────────────────
+    // Anyone can read products
+    // Only admins can create/update/delete
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // ── Coupons ───────────────────────────────────────────────────
+    // Anyone can read coupon codes to validate them at checkout
+    // Only admins can create/update/delete coupons
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // ── Orders ───────────────────────────────────────────────────
+    // Users can read/write their own orders
+    // Admins can read/write all orders
+    match /orders/{orderId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow write: if request.auth != null
+        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if request.auth != null;
+    }
+
+    // ── Support Messages & Inquiries ──────────────────────────────
+    // Public can submit contact messages
+    // Only admins can view or update support messages
+    match /contact_messages/{messageId} {
+      allow create: if true;
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    // ── Newsletter Subscribers ────────────────────────────────────
+    // Public can subscribe their email
+    // Only admins can view or manage subscribers list
+    match /newsletter_subscribers/{subscriberId} {
+      allow create: if true;
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    // ── Carts & Wishlists (stored per user) ──────────────────────────
+    // Users can read/write their own cart and wishlist
+    match /carts/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /wishlists/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ── Helper: check if current user is an admin ─────────────────
+    function isAdmin() {
+      return request.auth.token.email in
+        get(/databases/$(database)/documents/config/adminSettings).data.emails;
+    }
+  }
+}

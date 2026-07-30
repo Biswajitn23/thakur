@@ -4,11 +4,13 @@ import { toast } from "sonner";
 import brandLogo from "@/assets/logo.png";
 import { Mail, ArrowRight, ShieldCheck, Truck, RefreshCw, MessageSquare } from "lucide-react";
 
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
 export function SiteFooter() {
   const [subscribeEmail, setSubscribeEmail] = useState("");
+  const { user } = useAuth();
   const whatsappUrl =
     "https://wa.me/918959568262?text=Hello%20Thakur%20Yograj%20Ayurveda%2C%20I%20have%20a%20query%20about%20your%20products.";
 
@@ -19,13 +21,21 @@ export function SiteFooter() {
     const emailClean = subscribeEmail.trim().toLowerCase();
 
     try {
+      console.log("Newsletter subscribe clicked. Config:", {
+        isFirebaseConfigured,
+        db: !!db,
+        email: emailClean,
+        projectId: db?.app.options.projectId,
+        authDomain: db?.app.options.authDomain
+      });
       if (isFirebaseConfigured && db) {
-        await addDoc(collection(db, "newsletter_subscribers"), {
+        const docRef = await addDoc(collection(db, "newsletter_subscribers"), {
           email: emailClean,
           source: "GoDaddy / Website Footer",
           createdAt: serverTimestamp(),
           date: new Date().toLocaleDateString("en-IN"),
         });
+        alert(`SUCCESS: Stored in Firestore database! Document ID: ${docRef.id}`);
       }
 
       // Save locally
@@ -34,13 +44,19 @@ export function SiteFooter() {
       if (!list.includes(emailClean)) {
         list.push(emailClean);
         localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
+      } else if (!isFirebaseConfigured) {
+        toast.info("This email is already subscribed to our newsletter!");
+        setSubscribeEmail("");
+        return;
       }
 
       toast.success(
         "Thank you for subscribing! You are now subscribed to Thakur Yograj Ayurveda updates."
       );
       setSubscribeEmail("");
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Error subscribing:", err);
+      alert(`ERROR subscribing: ${err.message || err}`);
       toast.error("Error subscribing. Please try again.");
     }
   };

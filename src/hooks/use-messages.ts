@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
 export interface ContactMessage {
   id: string;
@@ -26,11 +27,20 @@ export interface ContactMessage {
 const LOCAL_STORAGE_MESSAGES_KEY = "thakur_custom_contact_messages";
 
 
-export function useMessages() {
+export function useMessages(listen = false) {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isAdmin } = useAuth();
 
   useEffect(() => {
+    // Only listen if listen is true AND user is an admin (or we are in local offline mode)
+    const shouldListen = listen && (!isFirebaseConfigured || isAdmin);
+
+    if (!shouldListen) {
+      setLoading(false);
+      return;
+    }
+
     if (isFirebaseConfigured && db) {
       const q = query(collection(db, "contact_messages"), orderBy("createdAt", "desc"));
       const unsubscribe = onSnapshot(
@@ -52,7 +62,7 @@ export function useMessages() {
     } else {
       loadLocalMessages();
     }
-  }, []);
+  }, [listen, isAdmin]);
 
   const loadLocalMessages = () => {
     if (typeof window === "undefined") return;
