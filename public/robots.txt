@@ -8,4 +8,4 @@ Disallow: /login
 # Block search engine crawlers from indexing duplicate query parameters
 Disallow: /*?
 
-Sitemap: /sitemap.xml
+Sitemap: https://thakuryograj.com/sitemap.xml
