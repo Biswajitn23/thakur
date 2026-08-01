@@ -301,9 +301,7 @@ function MyOrdersPage() {
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${
                           ["Processing", "Shipped", "Delivered"].includes(order.status)
                             ? "bg-gold border-gold text-ivory shadow-md shadow-gold/20"
-                            : order.status === "Pending"
-                              ? "bg-white border-gold text-gold animate-pulse"
-                              : "bg-white border-stone-200 text-stone-400"
+                            : "bg-white border-stone-200 text-stone-400"
                         }`}>
                           {["Processing", "Shipped", "Delivered"].includes(order.status) ? "✓" : "2"}
                         </div>
@@ -319,7 +317,7 @@ function MyOrdersPage() {
                           ["Shipped", "Delivered"].includes(order.status)
                             ? "bg-gold border-gold text-ivory shadow-md shadow-gold/20"
                             : order.status === "Processing"
-                              ? "bg-white border-gold text-gold animate-pulse"
+                              ? "bg-white border-gold text-gold animate-pulse shadow-md shadow-gold/10"
                               : "bg-white border-stone-200 text-stone-400"
                         }`}>
                           {["Shipped", "Delivered"].includes(order.status) ? "✓" : "3"}
@@ -336,7 +334,7 @@ function MyOrdersPage() {
                           order.status === "Delivered"
                             ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-250"
                             : order.status === "Shipped"
-                              ? "bg-white border-gold text-gold animate-pulse"
+                              ? "bg-white border-gold text-gold animate-pulse shadow-md shadow-gold/10"
                               : "bg-white border-stone-200 text-stone-400"
                         }`}>
                           {order.status === "Delivered" ? "✓" : "4"}

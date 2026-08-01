@@ -1242,6 +1242,19 @@ function CartDrawer() {
     ? Math.max(0, taxableBase + shippingFee)
     : Math.max(0, taxableBase + gstAmount + shippingFee);
 
+  const getWhatsAppOrderUrl = () => {
+    const itemsText = items.map(i => `${i.name} (Qty: ${i.qty})`).join(", ");
+    const text = `Hello Thakur Yograj Ayurveda, I would like to place an order:
+- *Items*: ${itemsText}
+- *Total*: ₹${finalTotal}
+- *Name*: ${customerName}
+- *Phone*: ${customerPhone}
+- *Address*: ${shippingAddress}
+
+Please confirm my order and share payment details/QR code.`;
+    return `https://wa.me/918959568262?text=${encodeURIComponent(text)}`;
+  };
+
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
     if (!couponCodeInput.trim()) return;
@@ -1457,7 +1470,7 @@ function CartDrawer() {
         if (checkoutResult?.error) {
           throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
         }
-        throw new Error("Payment verification failed or session expired. Order created as pending.");
+        throw new Error("Payment was not completed. Please try again or choose Cash on Delivery (COD).");
       }
     } catch (err: any) {
       console.error("Cashfree checkout error:", err);
@@ -1766,8 +1779,19 @@ function CartDrawer() {
                   </div>
 
                   {paymentError && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-700 text-[11px]">
-                      {paymentError}
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-700 text-[11px] flex flex-col gap-2">
+                      <span className="font-semibold">{paymentError}</span>
+                      <div className="border-t border-red-500/20 pt-1.5 flex items-center justify-between gap-1.5">
+                        <span>Need help? Place order directly:</span>
+                        <a
+                          href={getWhatsAppOrderUrl()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold uppercase tracking-wider transition cursor-pointer"
+                        >
+                          💬 WhatsApp Order
+                        </a>
+                      </div>
                     </div>
                   )}
                 </form>
@@ -1804,23 +1828,25 @@ function CartDrawer() {
               </div>
             ) : (
               /* STEP 2 FOOTER */
-              <button
-                type="submit"
-                form="checkout-form"
-                disabled={isProcessingPayment}
-                className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-luxe"
-              >
-                {isProcessingPayment ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-ivory border-t-transparent rounded-full animate-spin" />
-                    Initializing Payment...
-                  </>
-                ) : paymentMethod === "Cashfree" ? (
-                  "Pay Now with Cashfree"
-                ) : (
-                  "Place Order (COD)"
-                )}
-              </button>
+              <div className="space-y-3">
+                <button
+                  type="submit"
+                  form="checkout-form"
+                  disabled={isProcessingPayment}
+                  className="w-full py-4 rounded-full bg-forest text-ivory text-sm tracking-[0.15em] uppercase hover:bg-forest-deep transition font-bold disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-luxe"
+                >
+                  {isProcessingPayment ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-ivory border-t-transparent rounded-full animate-spin" />
+                      Initializing Payment...
+                    </>
+                  ) : paymentMethod === "Cashfree" ? (
+                    "Pay Now with Cashfree"
+                  ) : (
+                    "Place Order (COD)"
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}

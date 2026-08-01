@@ -170,6 +170,20 @@ function FullCheckoutPage() {
     shippingFee: number;
   } | null>(null);
 
+  const getWhatsAppOrderUrl = () => {
+    const itemsText = items.map(i => `${i.name} (Qty: ${i.qty})`).join(", ");
+    const text = `Hello Thakur Yograj Ayurveda, I would like to place an order:
+- *Items*: ${itemsText}
+- *Total*: ₹${finalTotal}
+- *Name*: ${customerName}
+- *Phone*: ${customerPhone}
+- *Address*: ${shippingAddress}
+${orderNote ? `- *Note*: ${orderNote}` : ""}
+
+Please confirm my order and share payment details/QR code.`;
+    return `https://wa.me/918959568262?text=${encodeURIComponent(text)}`;
+  };
+
   // Promo Coupon state
   const [couponCodeInput, setCouponCodeInput] = useState("");
 
@@ -585,7 +599,7 @@ function FullCheckoutPage() {
         if (checkoutResult?.error) {
           throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
         }
-        throw new Error("Payment verification pending or was not completed. You can complete it using the link sent to your phone/email.");
+        throw new Error("Payment was not completed. Please try again or choose Cash on Delivery (COD).");
       }
     } catch (err: any) {
       console.error("Cashfree checkout error:", err);
@@ -996,9 +1010,22 @@ function FullCheckoutPage() {
 
 
                 {paymentError && (
-                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{paymentError}</span>
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span className="font-semibold">{paymentError}</span>
+                    </div>
+                    <div className="border-t border-rose-200/50 pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span>Facing payment issues? Order directly with us:</span>
+                      <a
+                        href={getWhatsAppOrderUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer"
+                      >
+                        💬 Order via WhatsApp
+                      </a>
+                    </div>
                   </div>
                 )}
               </form>
@@ -1196,7 +1223,7 @@ function FullCheckoutPage() {
                   )}
                 </button>
 
-                <p className="text-[10px] text-stone-500 text-center flex items-center justify-center gap-1 font-semibold">
+                <p className="text-[10px] text-stone-500 text-center flex items-center justify-center gap-1 font-semibold pt-1">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span>Guaranteed Authentic & Encrypted Ayurvedic Checkout</span>
                 </p>

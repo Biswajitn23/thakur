@@ -38,18 +38,16 @@ export async function sendNtfyNotification({ title, message, priority = "default
 
     console.log(`[Ntfy] Sending push notification to topic: "${topic}"...`);
 
-    const headers: Record<string, string> = {
-      "Title": title,
-      "Priority": priority,
-    };
+    const urlParams = new URLSearchParams();
+    urlParams.set("title", title);
+    urlParams.set("priority", priority);
     if (tags) {
-      headers["Tags"] = tags;
+      urlParams.set("tags", tags);
     }
 
-    const response = await fetch(`https://ntfy.sh/${topic}`, {
+    const response = await fetch(`https://ntfy.sh/${topic}?${urlParams.toString()}`, {
       method: "POST",
       body: message,
-      headers,
     });
 
     if (!response.ok) {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import brandLogo from "@/assets/logo.png";
-import { Mail, ArrowRight, ShieldCheck, Truck, RefreshCw, MessageSquare } from "lucide-react";
+import { Mail, ArrowRight, ShieldCheck, Truck, RefreshCw, MessageSquare, Instagram, Facebook } from "lucide-react";
 
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
@@ -112,6 +112,35 @@ export function SiteFooter() {
             <p className="mt-6 max-w-sm text-forest/70 text-sm leading-relaxed">
               Luxury Ayurvedic wellness, hand-crafted in Chhattisgarh. Rooted in traditional herbal wisdom, refined for modern living.
             </p>
+            <div className="mt-5 flex items-center gap-3">
+              <a
+                href="https://facebook.com/thakuryograjayurveda"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-forest/5 border border-gold/30 flex items-center justify-center text-forest hover:text-gold hover:bg-forest/5 hover:border-gold transition cursor-pointer"
+                title="Follow us on Facebook"
+              >
+                <Facebook className="w-4 h-4" />
+              </a>
+              <a
+                href="https://www.instagram.com/thakuryograj_/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-forest/5 border border-gold/30 flex items-center justify-center text-forest hover:text-gold hover:bg-forest/5 hover:border-gold transition cursor-pointer"
+                title="Follow us on Instagram"
+              >
+                <Instagram className="w-4 h-4" />
+              </a>
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-forest/5 border border-gold/30 flex items-center justify-center text-forest hover:text-gold hover:bg-forest/5 hover:border-gold transition cursor-pointer"
+                title="Chat with us on WhatsApp"
+              >
+                <MessageSquare className="w-4 h-4" />
+              </a>
+            </div>
             <form onSubmit={handleSubscribeSubmit} className="mt-8 flex gap-2 max-w-sm">
               <input
                 type="email"
@@ -224,16 +253,20 @@ export function SiteFooter() {
           <div>© {new Date().getFullYear()} Thakur Yograj Ayurveda · Made with pride in India</div>
           <div className="flex items-center gap-6 tracking-widest uppercase font-medium">
             <a
-              href="https://instagram.com"
+              href="https://www.instagram.com/thakuryograj_/"
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => {
-                e.preventDefault();
-                toast.info("Follow us on Instagram: @ThakurYograjAyurveda (Official handle coming soon!)");
-              }}
-              className="hover:text-gold transition cursor-pointer"
+              className="hover:text-gold transition"
             >
               Instagram
+            </a>
+            <a
+              href="https://facebook.com/thakuryograjayurveda"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gold transition"
+            >
+              Facebook
             </a>
             <a
               href={whatsappUrl}
