@@ -118,11 +118,26 @@ export function useCoupons() {
     }
   };
 
+  const incrementCouponUsedCount = async (code: string) => {
+    const coupon = coupons.find((c) => c.code.toUpperCase() === code.toUpperCase().trim());
+    if (!coupon) return;
+
+    const newUsedCount = (coupon.usedCount || 0) + 1;
+    if (isFirebaseConfigured && db) {
+      await updateDoc(doc(db, "coupons", coupon.id), { usedCount: newUsedCount });
+    } else {
+      const updated = coupons.map((c) => (c.id === coupon.id ? { ...c, usedCount: newUsedCount } : c));
+      setCoupons(updated);
+      localStorage.setItem(LOCAL_STORAGE_COUPONS_KEY, JSON.stringify(updated));
+    }
+  };
+
   return {
     coupons,
     loading,
     addCoupon,
     toggleCouponStatus,
     deleteCoupon,
+    incrementCouponUsedCount,
   };
 }

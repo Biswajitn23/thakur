@@ -103,9 +103,9 @@ export const createCashfreeOrderFn = createServerFn({ method: "POST" })
           customer_phone: sanitizedPhone,
         },
         order_meta: {
-          return_url:
-            data.returnUrl ||
-            "https://www.cashfree.com/devstudio/preview/pg/web/popup",
+          return_url: data.returnUrl
+            ? (data.returnUrl.includes("{order_id}") ? data.returnUrl : `${data.returnUrl}?order_id={order_id}`)
+            : "https://www.cashfree.com/devstudio/preview/pg/web/popup",
         },
       };
 

@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
+import { sendNtfyNotification } from "@/lib/ntfy";
 
 export interface ContactMessage {
   id: string;
@@ -109,6 +110,13 @@ export function useMessages(listen = false) {
       setMessages(updated);
       localStorage.setItem(LOCAL_STORAGE_MESSAGES_KEY, JSON.stringify(updated));
     }
+
+    sendNtfyNotification({
+      title: `New Message from ${msgData.name} ✉️`,
+      message: `Subject: ${msgData.subject}\nPhone: ${msgData.phone}\nEmail: ${msgData.email}\nMessage: ${msgData.message}`,
+      priority: "default",
+      tags: "email,speech_balloon",
+    });
   };
 
   const updateMessageStatus = async (id: string, status: "unread" | "read" | "replied") => {

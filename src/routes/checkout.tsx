@@ -8,6 +8,7 @@ import { useStoreSettings } from "@/hooks/use-store-settings";
 import { createCashfreeOrderFn, verifyCashfreeOrderFn } from "@/lib/cashfree-server";
 import { getCashfreeInstance } from "@/lib/cashfree";
 import { useCartContext } from "@/context/cart-context";
+import { sendNtfyNotification } from "@/lib/ntfy";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -30,6 +31,78 @@ import {
   Search,
   Package,
 } from "lucide-react";
+
+function QuantityInput({ value, onChange }: { value: number; onChange: (qty: number) => void }) {
+  const [localVal, setLocalVal] = useState(value.toString());
+
+  useEffect(() => {
+    setLocalVal(value.toString());
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value.replace(/[^\d]/g, "");
+    setLocalVal(text);
+    const parsed = parseInt(text, 10);
+    if (!isNaN(parsed) && parsed >= 1) {
+      onChange(parsed);
+    }
+  };
+
+  const handleBlur = () => {
+    const parsed = parseInt(localVal, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      onChange(1);
+      setLocalVal("1");
+    }
+  };
+
+  const handleDecrement = () => {
+    const parsed = parseInt(localVal, 10);
+    if (!isNaN(parsed) && parsed > 1) {
+      onChange(parsed - 1);
+      setLocalVal((parsed - 1).toString());
+    } else {
+      onChange(1);
+      setLocalVal("1");
+    }
+  };
+
+  const handleIncrement = () => {
+    const parsed = parseInt(localVal, 10);
+    const current = isNaN(parsed) ? 1 : parsed;
+    onChange(current + 1);
+    setLocalVal((current + 1).toString());
+  };
+
+  return (
+    <div className="flex items-center border border-stone-200 bg-white rounded-xl overflow-hidden shadow-sm h-8 shrink-0">
+      <button
+        type="button"
+        onClick={handleDecrement}
+        disabled={value <= 1}
+        className="w-8 h-full flex items-center justify-center font-bold text-base text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none select-none"
+      >
+        −
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={localVal}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="w-10 text-center text-xs font-bold text-stone-950 bg-transparent border-none outline-none focus:ring-0 focus:outline-none p-0 select-all font-mono"
+      />
+      <button
+        type="button"
+        onClick={handleIncrement}
+        className="w-8 h-full flex items-center justify-center font-bold text-base text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition cursor-pointer select-none"
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
@@ -67,8 +140,8 @@ function getDeliveryRange(): string {
 
 function FullCheckoutPage() {
   const { items, removeItem, setQty, subtotal, clearCart, appliedCoupon, setAppliedCoupon } = useCartContext();
-  const { createOrder, updateOrderPayment } = useOrders();
-  const { coupons } = useCoupons();
+  const { createOrder, updateOrderPayment, orders, loading: ordersLoading } = useOrders();
+  const { coupons, incrementCouponUsedCount } = useCoupons();
   const { settings: storeSettings } = useStoreSettings();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -79,6 +152,7 @@ function FullCheckoutPage() {
   const [shippingAddress, setShippingAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"Cashfree" | "COD">("Cashfree");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isVerifyingURLPayment, setIsVerifyingURLPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
@@ -155,6 +229,109 @@ function FullCheckoutPage() {
     }
   }, [user]);
 
+  // Verify Cashfree Payment when redirected back to this page with order_id in URL
+  useEffect(() => {
+    const checkURLPayment = async () => {
+      if (typeof window === "undefined") return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const orderIdParam = urlParams.get("order_id");
+      if (!orderIdParam || ordersLoading) return;
+
+      console.log("[Checkout URL Verify] Processing URL payment verification for order:", orderIdParam);
+      
+      const localOrder = orders.find(o => o.paymentId === orderIdParam || o.cfOrderId === orderIdParam);
+      
+      if (!localOrder) {
+        console.log("[Checkout URL Verify] Order not found in database yet. Waiting for sync...");
+        return;
+      }
+
+      // If already marked as Paid, show success directly
+      if (localOrder.paymentStatus === "Paid") {
+        console.log("[Checkout URL Verify] Order is already Paid.");
+        setSuccessOrderDetails({
+          items: localOrder.items,
+          subtotal: localOrder.total - (storeSettings.deliveryFee ?? 49),
+          shippingAddress: localOrder.shippingAddress,
+          customerName: localOrder.customerName,
+          customerPhone: localOrder.customerPhone,
+          paymentMethod: "Cashfree",
+          finalTotal: localOrder.total,
+          appliedCoupon: null,
+          discountAmount: 0,
+          shippingFee: localOrder.total >= (storeSettings.freeShippingThreshold ?? 499) ? 0 : (storeSettings.deliveryFee ?? 49),
+        });
+        setPlacedOrderId(localOrder.id);
+        setOrderSuccess(true);
+        clearCart();
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+
+      setIsVerifyingURLPayment(true);
+      try {
+        const verifyRes = await verifyCashfreeOrderFn({
+          data: { orderId: orderIdParam },
+        });
+
+        const isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
+        console.log("[Checkout URL Verify] Verification response:", verifyRes);
+
+        if (isPaid) {
+          await updateOrderPayment(
+            localOrder.id,
+            "Paid",
+            orderIdParam,
+            verifyRes.paymentTxnId,
+            verifyRes.paymentModeDetails
+          );
+
+          if (localOrder.couponCode) {
+            await incrementCouponUsedCount(localOrder.couponCode);
+          }
+
+          sendNtfyNotification({
+            title: "New Paid Order (Redirect Verified)! 💰",
+            message: `Order ID: ${localOrder.id}\nCustomer: ${localOrder.customerName}\nPhone: ${localOrder.customerPhone}\nTotal Amount: ₹${localOrder.total}\nPayment Method: Cashfree\nTxn ID: ${verifyRes.paymentTxnId || "N/A"}\nItems: ${localOrder.items.map(i => `${i.name} (Qty: ${i.qty})`).join(", ")}`,
+            priority: "high",
+            tags: "shopping_bags,moneybag",
+          });
+
+          setSuccessOrderDetails({
+            items: localOrder.items,
+            subtotal: localOrder.total - (storeSettings.deliveryFee ?? 49) + (localOrder.discountAmount || 0),
+            shippingAddress: localOrder.shippingAddress,
+            customerName: localOrder.customerName,
+            customerPhone: localOrder.customerPhone,
+            paymentMethod: "Cashfree",
+            finalTotal: localOrder.total,
+            appliedCoupon: localOrder.couponCode ? { code: localOrder.couponCode, discountValue: localOrder.discountAmount || 0, discountType: "flat" } : null,
+            discountAmount: localOrder.discountAmount || 0,
+            shippingFee: localOrder.total >= (storeSettings.freeShippingThreshold ?? 499) ? 0 : (storeSettings.deliveryFee ?? 49),
+          });
+          setPlacedOrderId(localOrder.id);
+          setOrderSuccess(true);
+          clearCart();
+          toast.success("Payment completed successfully!");
+        } else {
+          const errMsg = "Payment verification failed. Your payment was not completed or was cancelled.";
+          setPaymentError(errMsg);
+          toast.error(errMsg);
+        }
+      } catch (err: any) {
+        console.error("[Checkout URL Verify] Error verifying payment:", err);
+        const errMsg = "Error verifying payment: " + (err.message || "Unknown error");
+        setPaymentError(errMsg);
+        toast.error(errMsg);
+      } finally {
+        setIsVerifyingURLPayment(false);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    checkURLPayment();
+  }, [ordersLoading, orders]);
+
   // Enforce COD availability setting
   useEffect(() => {
     if (!storeSettings.isCodEnabled && paymentMethod === "COD") {
@@ -199,6 +376,10 @@ function FullCheckoutPage() {
     );
 
     if (matched) {
+      if (matched.usedCount !== undefined && matched.usageLimit !== undefined && matched.usedCount >= matched.usageLimit) {
+        toast.error(`This coupon code has reached its usage limit.`);
+        return;
+      }
       if (subtotal < matched.minOrderValue) {
         toast.error(`Minimum order amount for coupon ${matched.code} is ₹${matched.minOrderValue}.`);
         return;
@@ -273,6 +454,19 @@ function FullCheckoutPage() {
         paymentMethod: "COD",
         paymentStatus: "Pending",
         userId: user.uid,
+        couponCode: appliedCoupon?.code || "",
+        discountAmount: discountAmount || 0,
+      });
+
+      if (appliedCoupon) {
+        await incrementCouponUsedCount(appliedCoupon.code);
+      }
+
+      sendNtfyNotification({
+        title: "New COD Order Placed! 📦",
+        message: `Order ID: ${orderId}\nCustomer: ${name}\nPhone: ${phone}\nTotal Amount: ₹${finalTotal}\nItems: ${orderPayloadItems.map(i => `${i.name} (Qty: ${i.qty})`).join(", ")}`,
+        priority: "high",
+        tags: "package,money_with_wings",
       });
 
       setSuccessOrderDetails({
@@ -303,6 +497,7 @@ function FullCheckoutPage() {
           customerName: name,
           customerEmail: email,
           customerPhone: phone,
+          returnUrl: window.location.origin + "/checkout",
         },
       });
 
@@ -323,6 +518,8 @@ function FullCheckoutPage() {
         cfOrderId: res.cfOrderId,
         paymentId: res.orderId,
         userId: user.uid,
+        couponCode: appliedCoupon?.code || "",
+        discountAmount: discountAmount || 0,
       });
 
       const cashfree = await getCashfreeInstance();
@@ -338,16 +535,35 @@ function FullCheckoutPage() {
         redirectTarget: "_modal",
       });
 
-      // 3. Verify Order Status on Server
-      const verifyRes = await verifyCashfreeOrderFn({
-        data: { orderId: res.orderId || res.cfOrderId || "" },
-      });
+      // 3. Verify Order Status on Server with retry mechanism (up to 3 attempts, 1.5s delay)
+      let verifyRes;
+      let isPaid = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        console.log(`[Cashfree Checkout] Verifying order status (attempt ${attempt})...`);
+        verifyRes = await verifyCashfreeOrderFn({
+          data: { orderId: res.orderId || res.cfOrderId || "" },
+        });
+        isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
+        if (isPaid) break;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
 
-      const isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
-
-      if (isPaid) {
+      if (isPaid && verifyRes) {
         // 4. Update the existing order to Paid
         await updateOrderPayment(orderId, "Paid", res.orderId, verifyRes.paymentTxnId, verifyRes.paymentModeDetails);
+
+        if (appliedCoupon) {
+          await incrementCouponUsedCount(appliedCoupon.code);
+        }
+
+        sendNtfyNotification({
+          title: "New Paid Order Placed! 💰",
+          message: `Order ID: ${orderId}\nCustomer: ${name}\nPhone: ${phone}\nTotal Amount: ₹${finalTotal}\nPayment Method: Cashfree\nTxn ID: ${verifyRes.paymentTxnId || "N/A"}\nItems: ${orderPayloadItems.map(i => `${i.name} (Qty: ${i.qty})`).join(", ")}`,
+          priority: "high",
+          tags: "shopping_bags,moneybag",
+        });
 
         setSuccessOrderDetails({
           items: [...items],
@@ -369,7 +585,7 @@ function FullCheckoutPage() {
         if (checkoutResult?.error) {
           throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
         }
-        throw new Error("Payment was not completed. You can complete it using the link sent to your phone/email.");
+        throw new Error("Payment verification pending or was not completed. You can complete it using the link sent to your phone/email.");
       }
     } catch (err: any) {
       console.error("Cashfree checkout error:", err);
@@ -380,6 +596,21 @@ function FullCheckoutPage() {
       setIsProcessingPayment(false);
     }
   };
+
+  // Verifying URL Payment Loader
+  if (isVerifyingURLPayment) {
+    return (
+      <div className="min-h-screen bg-[#faf8f5] flex flex-col items-center justify-center p-6 text-[#082a1c] font-sans antialiased">
+        <div className="max-w-md w-full text-center bg-white p-8 rounded-3xl border border-[#cfa860]/30 shadow-2xl space-y-6">
+          <div className="w-16 h-16 border-4 border-[#082a1c] border-t-transparent rounded-full animate-spin mx-auto" />
+          <h2 className="font-serif text-2xl font-bold text-[#082a1c]">Verifying Payment...</h2>
+          <p className="text-xs text-stone-600 leading-relaxed font-semibold">
+            Please wait while we confirm your payment status with Cashfree. This will take just a moment.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Unauthenticated screen
   if (!authLoading && !user) {
@@ -448,7 +679,7 @@ function FullCheckoutPage() {
         {/* Progress Steps Subbar with CHECKOUT title */}
         <div className="border-t border-gold/15 py-2 px-4 sm:px-6 flex items-center justify-between bg-ivory/50">
           <span className="font-serif text-xl sm:text-2xl font-bold text-[#082a1c] tracking-tight leading-none">
-            Checkout
+            {orderSuccess ? "Order Confirmed" : "Checkout"}
           </span>
           <div className="flex items-center gap-3 text-[9px] tracking-[0.2em] text-forest/50 uppercase font-semibold">
             <button
@@ -460,9 +691,9 @@ function FullCheckoutPage() {
               className="text-forest/70 font-semibold hover:text-gold transition cursor-pointer hover:underline underline-offset-4"
             >1. Bag</button>
             <span className="text-gold/60">•</span>
-            <span className="text-gold font-bold underline underline-offset-4 decoration-2">2. Payment</span>
+            <span className={!orderSuccess ? "text-gold font-bold underline underline-offset-4 decoration-2" : "text-forest/70"}>2. Payment</span>
             <span className="text-gold/60">•</span>
-            <span>3. Done</span>
+            <span className={orderSuccess ? "text-gold font-bold underline underline-offset-4 decoration-2" : ""}>3. Done</span>
           </div>
         </div>
       </header>
@@ -713,11 +944,20 @@ function FullCheckoutPage() {
                       <input
                         type="tel"
                         required
-                        maxLength={10}
                         pattern="[6-9][0-9]{9}"
+                        title="Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9"
                         placeholder="10-Digit Mobile Number (e.g. 9876543210)"
                         value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d]/g, ""))}
+                        onChange={(e) => {
+                          let digits = e.target.value.replace(/[^\d]/g, "");
+                          if (digits.startsWith("91") && digits.length > 10) {
+                            digits = digits.substring(2);
+                          }
+                          if (digits.startsWith("0")) {
+                            digits = digits.substring(1);
+                          }
+                          setCustomerPhone(digits.slice(0, 10));
+                        }}
                         className="w-full p-3.5 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 text-base font-semibold focus:bg-white focus:outline-none focus:border-[#082a1c] transition font-mono"
                       />
                     </div>
@@ -791,21 +1031,10 @@ function FullCheckoutPage() {
                         <div className="font-bold text-xs text-stone-900 truncate">{i.name}</div>
                         <div className="text-xs text-amber-900 font-bold mt-0.5">{i.price}</div>
                         <div className="mt-2 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setQty(i.name, i.qty - 1)}
-                            className="w-6 h-6 rounded-full border border-stone-300 grid place-items-center text-stone-700 text-xs hover:bg-stone-200 transition cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-xs font-bold text-stone-900 w-4 text-center">{i.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => setQty(i.name, i.qty + 1)}
-                            className="w-6 h-6 rounded-full border border-stone-300 grid place-items-center text-stone-700 text-xs hover:bg-stone-200 transition cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
+                          <QuantityInput
+                             value={i.qty}
+                             onChange={(qty) => setQty(i.name, qty)}
+                           />
                           <button
                             type="button"
                             onClick={() => removeItem(i.name)}

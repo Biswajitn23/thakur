@@ -8,6 +8,7 @@ export interface StoreSettings {
   freeShippingThreshold: number;
   gstPercentage: number;
   isGstIncluded: boolean;
+  ntfyTopic?: string;
 }
 
 const LOCAL_STORAGE_SETTINGS_KEY = "thakur_store_settings";
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   freeShippingThreshold: 2500,
   gstPercentage: 18,
   isGstIncluded: true,
+  ntfyTopic: "thakur_yograj_alerts",
 };
 
 export function useStoreSettings() {

@@ -44,6 +44,7 @@ import {
   Eye,
   Mail,
   Download,
+  Bell,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -209,7 +210,7 @@ function AdminPage() {
   const [img, setImg] = useState("");
   const [concern, setConcern] = useState<Concern>("hairfall");
   const [benefitsText, setBenefitsText] = useState("");
-  const [stockQty, setStockQty] = useState<number>(45);
+  const [stockQty, setStockQty] = useState<string | number>(45);
 
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
 
@@ -236,10 +237,10 @@ function AdminPage() {
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [discountType, setDiscountType] = useState<"percent" | "flat">("percent");
-  const [discountValue, setDiscountValue] = useState(20);
-  const [minOrderValue, setMinOrderValue] = useState(500);
+  const [discountValue, setDiscountValue] = useState<string | number>("20");
+  const [minOrderValue, setMinOrderValue] = useState<string | number>("500");
   const [expiryDate, setExpiryDate] = useState("2026-12-31");
-  const [usageLimit, setUsageLimit] = useState(200);
+  const [usageLimit, setUsageLimit] = useState<string | number>("200");
 
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1054,76 +1055,30 @@ function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2 border-t border-amber-500/5">
                         <div>
                           <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
                             Shipping Address
                           </p>
-                          <p className="text-amber-100/90 leading-relaxed">
+                          <p className="text-amber-100/90 leading-relaxed font-sans">
                             {o.shippingAddress}
                           </p>
-                          <p className="text-amber-200/60 mt-1">
-                            Contact: {o.customerPhone}
+                          <p className="text-amber-200/60 mt-1 font-semibold">
+                            📞 Contact: {o.customerPhone}
                           </p>
-
-                          {o.trackingNumber && (
-                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-amber-500/20 rounded-xl space-y-1">
-                              <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider block">
-                                Shipment Tracking Details
-                              </span>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-amber-200/70">{o.courierName}:</span>
-                                <span className="font-mono font-bold text-amber-200">{o.trackingNumber}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {(o.cfOrderId || o.paymentId || o.paymentTxnId) && (
-                            <div className="mt-2.5 p-2.5 bg-stone-950/90 border border-emerald-500/20 rounded-xl space-y-1.5 text-left">
-                              <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
-                                Cashfree Payment Transaction
-                              </span>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-amber-200/70">CF Order ID:</span>
-                                <span className="font-mono font-bold text-emerald-300 select-all">{o.cfOrderId || o.paymentId}</span>
-                              </div>
-                              {o.paymentTxnId && (
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-amber-200/70">Txn ID:</span>
-                                  <span className="font-mono font-bold text-emerald-300 select-all">{o.paymentTxnId}</span>
-                                </div>
-                              )}
-                              {o.paymentModeDetails && (
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-amber-200/70">Method Details:</span>
-                                  <span className="font-sans font-bold text-emerald-300">{o.paymentModeDetails}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
                         </div>
 
-                        <div>
-                          <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
-                            Items Summary
-                          </p>
-                          <div className="space-y-1">
-                            {o.items.map((it, idx) => (
-                              <div
-                                key={idx}
-                                className="flex justify-between items-center bg-stone-950/50 p-2 rounded-xl"
-                              >
-                                <span className="text-amber-100">
-                                  {it.qty}x {it.name}
-                                </span>
-                                <span className="text-amber-400 font-bold font-sans">
-                                  {it.price}
-                                </span>
-                              </div>
-                            ))}
+                        <div className="flex flex-col justify-between space-y-3">
+                          <div>
+                            <p className="text-amber-200/50 uppercase tracking-wider font-semibold mb-1">
+                              Items Summary
+                            </p>
+                            <p className="text-amber-100/90 font-semibold leading-relaxed">
+                              {o.items.map(it => `${it.qty}x ${it.name}`).join(", ")}
+                            </p>
                           </div>
-                          <div className="mt-2 text-right text-sm font-bold text-amber-300 font-sans">
-                            Total: ₹{o.total}
+                          <div className="text-right text-sm font-bold text-amber-300 font-sans border-t border-amber-500/10 pt-2">
+                            Total: ₹{o.total.toLocaleString("en-IN")}
                           </div>
                         </div>
                       </div>
@@ -1434,12 +1389,13 @@ function AdminPage() {
                   <div className="space-y-1.5">
                     <label className="block text-amber-200/80 font-medium">Standard Delivery Fee (₹)</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={storeSettings.deliveryFee}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={storeSettings.deliveryFee === 0 ? "" : (storeSettings.deliveryFee ?? "")}
                       onChange={(e) => {
-                        const val = Math.max(0, Number(e.target.value) || 0);
-                        updateStoreSettings({ deliveryFee: val });
+                        const cleanVal = e.target.value.replace(/[^\d]/g, "");
+                        updateStoreSettings({ deliveryFee: cleanVal === "" ? 0 : Number(cleanVal) });
                       }}
                       className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
                     />
@@ -1449,12 +1405,13 @@ function AdminPage() {
                   <div className="space-y-1.5">
                     <label className="block text-amber-200/80 font-medium">Free Shipping Order Minimum (₹)</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={storeSettings.freeShippingThreshold}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={storeSettings.freeShippingThreshold === 0 ? "" : (storeSettings.freeShippingThreshold ?? "")}
                       onChange={(e) => {
-                        const val = Math.max(0, Number(e.target.value) || 0);
-                        updateStoreSettings({ freeShippingThreshold: val });
+                        const cleanVal = e.target.value.replace(/[^\d]/g, "");
+                        updateStoreSettings({ freeShippingThreshold: cleanVal === "" ? 0 : Number(cleanVal) });
                       }}
                       className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
                     />
@@ -1496,12 +1453,13 @@ function AdminPage() {
                   <div className="space-y-1.5">
                     <label className="block text-amber-200/80 font-medium">GST Rate (%)</label>
                     <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={storeSettings.gstPercentage}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={storeSettings.gstPercentage === 0 ? "" : (storeSettings.gstPercentage ?? "")}
                       onChange={(e) => {
-                        const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                        const cleanVal = e.target.value.replace(/[^\d]/g, "");
+                        const val = cleanVal === "" ? 0 : Math.min(100, Number(cleanVal));
                         updateStoreSettings({ gstPercentage: val });
                       }}
                       className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
@@ -1517,6 +1475,34 @@ function AdminPage() {
                         : `GST (${storeSettings.gstPercentage}%) Added Separately at Checkout`}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              {/* ntfy.sh Push Notification Configuration */}
+              <div className="bg-stone-900/80 border border-amber-500/20 rounded-3xl p-6 space-y-4">
+                <div>
+                  <h4 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-amber-400" /> ntfy.sh Push Notifications
+                  </h4>
+                  <p className="text-xs text-amber-200/60 mt-1">
+                    Configure dynamic push notifications for orders and contact inquiries using the ntfy.sh service.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <label className="block text-amber-200/80 font-medium">ntfy.sh Topic Name</label>
+                  <input
+                    type="text"
+                    placeholder="thakur_yograj_alerts"
+                    value={storeSettings.ntfyTopic || ""}
+                    onChange={(e) => {
+                      updateStoreSettings({ ntfyTopic: e.target.value.trim() });
+                    }}
+                    className="w-full bg-stone-950 border border-amber-500/20 rounded-xl p-3 text-amber-100 font-mono text-sm focus:outline-none focus:border-amber-400"
+                  />
+                  <p className="text-[10px] text-amber-200/40">
+                    Enter a unique, private topic name. To receive alerts on your phone, download the <strong>ntfy</strong> app (iOS/Android) and subscribe to this topic.
+                  </p>
                 </div>
               </div>
 
@@ -1737,11 +1723,12 @@ function AdminPage() {
                   Stock Inventory Quantity
                 </label>
                 <input
-                  type="number"
-                  min={0}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   required
-                  value={stockQty}
-                  onChange={(e) => setStockQty(Number(e.target.value))}
+                  value={stockQty === 0 ? "" : stockQty}
+                  onChange={(e) => setStockQty(e.target.value.replace(/[^\d]/g, ""))}
                   placeholder="e.g. 45"
                   className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
                 />
@@ -1823,10 +1810,12 @@ function AdminPage() {
                     Discount Value
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     required
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    onChange={(e) => setDiscountValue(e.target.value.replace(/[^\d]/g, ""))}
                     placeholder={discountType === "percent" ? "20" : "100"}
                     className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
                   />
@@ -1839,10 +1828,12 @@ function AdminPage() {
                     Min Order Value (₹)
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     required
                     value={minOrderValue}
-                    onChange={(e) => setMinOrderValue(Number(e.target.value))}
+                    onChange={(e) => setMinOrderValue(e.target.value.replace(/[^\d]/g, ""))}
                     placeholder="500"
                     className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
                   />
@@ -1867,10 +1858,12 @@ function AdminPage() {
                   Total Usage Limit
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   required
                   value={usageLimit}
-                  onChange={(e) => setUsageLimit(Number(e.target.value))}
+                  onChange={(e) => setUsageLimit(e.target.value.replace(/[^\d]/g, ""))}
                   placeholder="200"
                   className="w-full bg-stone-950 border border-amber-500/20 rounded-xl py-2 px-3 text-amber-100 focus:outline-none focus:border-amber-400"
                 />
@@ -2041,15 +2034,15 @@ function AdminPage() {
       {/* Order Details Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-lenis-prevent>
-          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-xl shadow-2xl relative space-y-4 text-xs" data-lenis-prevent>
-            <div className="flex items-center justify-between border-b border-amber-500/10 pb-3">
+          <div className="bg-stone-900 border border-amber-500/30 rounded-3xl p-6 w-full max-w-xl shadow-2xl relative space-y-4 text-xs max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-500/20" data-lenis-prevent>
+            <div className="flex items-center justify-between border-b border-amber-500/10 pb-3 sticky top-0 bg-stone-900 z-10 pt-1">
               <div>
                 <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Order Specifications</span>
-                <h3 className="font-serif text-xl font-bold text-amber-100 mt-0.5">Order ID: {selectedOrder.id}</h3>
+                <h3 className="font-serif text-lg sm:text-xl font-bold text-amber-100 mt-0.5">Order ID: {selectedOrder.id}</h3>
               </div>
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="text-amber-200/50 hover:text-amber-100 p-1 cursor-pointer"
+                className="text-amber-200/50 hover:text-amber-100 p-2 hover:bg-stone-800 rounded-full transition cursor-pointer"
               >
                 ✕
               </button>
@@ -2130,15 +2123,47 @@ function AdminPage() {
                   </div>
                 ))}
               </div>
-              <div className="text-right text-sm font-bold text-amber-300 pr-2 font-sans">
-                Grand Total: ₹{selectedOrder.total.toLocaleString("en-IN")}
-              </div>
+
+              {/* Price & Cost Breakdown */}
+              {(() => {
+                const parsePriceLocal = (pStr: string) => Number(pStr.replace(/[^\d.]/g, "")) || 0;
+                const itemsSubtotal = selectedOrder.items.reduce((acc, it) => acc + (parsePriceLocal(it.price) * it.qty), 0);
+                const deliveryFee = storeSettings.deliveryFee ?? 49;
+                const freeThreshold = storeSettings.freeShippingThreshold ?? 499;
+                const shippingFee = itemsSubtotal >= freeThreshold || itemsSubtotal === 0 ? 0 : deliveryFee;
+                const discount = Math.max(0, itemsSubtotal + shippingFee - selectedOrder.total);
+
+                return (
+                  <div className="bg-stone-950 p-3.5 rounded-2xl border border-amber-500/10 space-y-2 mt-2 font-sans text-amber-100/90">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-amber-200/50">Items Subtotal:</span>
+                      <span className="font-semibold">₹{itemsSubtotal.toLocaleString("en-IN")}</span>
+                    </div>
+                    {discount > 0 && (
+                      <div className="flex justify-between text-xs text-emerald-400 font-bold">
+                        <span>Coupon/Discount:</span>
+                        <span>- ₹{discount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs">
+                      <span className="text-amber-200/50">Delivery Charges:</span>
+                      <span className={shippingFee === 0 ? "text-emerald-450 font-bold uppercase" : "font-semibold"}>
+                        {shippingFee === 0 ? "FREE" : `₹${shippingFee}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold text-amber-300 border-t border-amber-500/10 pt-2 font-sans">
+                      <span>Grand Total:</span>
+                      <span>₹{selectedOrder.total.toLocaleString("en-IN")}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
-            <div className="flex items-center justify-end pt-2 border-t border-amber-500/10">
+            <div className="flex items-center justify-end pt-3 pb-1 border-t border-amber-500/10 sticky bottom-0 bg-stone-900 z-10">
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl uppercase tracking-wider transition cursor-pointer"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl uppercase tracking-wider transition cursor-pointer shadow-md"
               >
                 Close Details
               </button>

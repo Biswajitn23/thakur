@@ -8,6 +8,7 @@ import { useCoupons } from "@/hooks/use-coupons";
 import { useStoreSettings } from "@/hooks/use-store-settings";
 import { createCashfreeOrderFn, verifyCashfreeOrderFn } from "@/lib/cashfree-server";
 import { getCashfreeInstance } from "@/lib/cashfree";
+import { sendNtfyNotification } from "@/lib/ntfy";
 import painOilAsset from "@/assets/pain-oil.asset.json";
 import hairOilBoxAsset from "@/assets/hair-oil-box.asset.json";
 import lifestyleHairAsset from "@/assets/lifestyle-hair.asset.json";
@@ -30,6 +31,78 @@ import hairBeforeComp from "@/assets/hair_before_comparison.png";
 import hairAfterComp from "@/assets/hair_after_comparison.png";
 
 
+
+function QuantityInput({ value, onChange }: { value: number; onChange: (qty: number) => void }) {
+  const [localVal, setLocalVal] = useState(value.toString());
+
+  useEffect(() => {
+    setLocalVal(value.toString());
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value.replace(/[^\d]/g, "");
+    setLocalVal(text);
+    const parsed = parseInt(text, 10);
+    if (!isNaN(parsed) && parsed >= 1) {
+      onChange(parsed);
+    }
+  };
+
+  const handleBlur = () => {
+    const parsed = parseInt(localVal, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      onChange(1);
+      setLocalVal("1");
+    }
+  };
+
+  const handleDecrement = () => {
+    const parsed = parseInt(localVal, 10);
+    if (!isNaN(parsed) && parsed > 1) {
+      onChange(parsed - 1);
+      setLocalVal((parsed - 1).toString());
+    } else {
+      onChange(1);
+      setLocalVal("1");
+    }
+  };
+
+  const handleIncrement = () => {
+    const parsed = parseInt(localVal, 10);
+    const current = isNaN(parsed) ? 1 : parsed;
+    onChange(current + 1);
+    setLocalVal((current + 1).toString());
+  };
+
+  return (
+    <div className="flex items-center border border-gold/30 bg-white rounded-xl overflow-hidden shadow-sm h-8 shrink-0">
+      <button
+        type="button"
+        onClick={handleDecrement}
+        disabled={value <= 1}
+        className="w-8 h-full flex items-center justify-center font-bold text-base text-forest/75 hover:bg-forest/5 hover:text-gold transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none select-none"
+      >
+        −
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={localVal}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="w-10 text-center text-xs font-bold text-forest bg-transparent border-none outline-none focus:ring-0 focus:outline-none p-0 select-all font-mono"
+      />
+      <button
+        type="button"
+        onClick={handleIncrement}
+        className="w-8 h-full flex items-center justify-center font-bold text-base text-forest/75 hover:bg-forest/5 hover:text-gold transition cursor-pointer select-none"
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -1109,8 +1182,8 @@ function ProductCard({ product }: { product: ProductItem }) {
 /* ---------------- CART DRAWER ---------------- */
 function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, setQty, subtotal, appliedCoupon, setAppliedCoupon } = useContext(CartContext)!;
-  const { createOrder } = useOrders();
-  const { coupons } = useCoupons();
+  const { createOrder, updateOrderPayment } = useOrders();
+  const { coupons, incrementCouponUsedCount } = useCoupons();
   const { settings: storeSettings } = useStoreSettings();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -1178,6 +1251,10 @@ function CartDrawer() {
     );
 
     if (matched) {
+      if (matched.usedCount !== undefined && matched.usageLimit !== undefined && matched.usedCount >= matched.usageLimit) {
+        toast.error(`This coupon code has reached its usage limit.`);
+        return;
+      }
       if (subtotal < matched.minOrderValue) {
         toast.error(`Minimum order amount for coupon ${matched.code} is ₹${matched.minOrderValue}.`);
         return;
@@ -1261,6 +1338,19 @@ function CartDrawer() {
         paymentMethod: "COD",
         paymentStatus: "Pending",
         userId: user.uid,
+        couponCode: appliedCoupon?.code || "",
+        discountAmount: discountAmount || 0,
+      });
+
+      if (appliedCoupon) {
+        await incrementCouponUsedCount(appliedCoupon.code);
+      }
+
+      sendNtfyNotification({
+        title: "New COD Order Placed! 📦",
+        message: `Customer: ${name}\nPhone: ${phone}\nTotal Amount: ₹${finalTotal}\nItems: ${orderPayloadItems.map(i => `${i.name} (Qty: ${i.qty})`).join(", ")}`,
+        priority: "high",
+        tags: "package,money_with_wings",
       });
 
       setOrderSuccess(true);
@@ -1283,12 +1373,30 @@ function CartDrawer() {
           customerName: name,
           customerEmail: email,
           customerPhone: phone,
+          returnUrl: window.location.origin + "/checkout",
         },
       });
 
       if (!res.success || !res.paymentSessionId) {
         throw new Error(res.error || "Failed to initialize payment order with Cashfree.");
       }
+
+      // 1. Create order in our database as Pending first
+      const orderId = await createOrder({
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        shippingAddress: address,
+        items: orderPayloadItems,
+        total: finalTotal,
+        paymentMethod: "Cashfree",
+        paymentStatus: "Pending",
+        cfOrderId: res.cfOrderId,
+        paymentId: res.orderId,
+        userId: user.uid,
+        couponCode: appliedCoupon?.code || "",
+        discountAmount: discountAmount || 0,
+      });
 
       const cashfree = await getCashfreeInstance();
       if (!cashfree) {
@@ -1305,37 +1413,52 @@ function CartDrawer() {
         throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
       }
 
-      // Verify Order Status on Server
-      const verifyRes = await verifyCashfreeOrderFn({
-        data: { orderId: res.orderId || res.cfOrderId || "" },
-      });
+      // Verify Order Status on Server with retry mechanism (up to 3 attempts, 1.5s delay)
+      let verifyRes;
+      let isPaid = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        console.log(`[Cashfree Checkout] Verifying order status (attempt ${attempt})...`);
+        verifyRes = await verifyCashfreeOrderFn({
+          data: { orderId: res.orderId || res.cfOrderId || "" },
+        });
+        isPaid = verifyRes?.paymentStatus === "Paid" || verifyRes?.orderStatus === "PAID";
+        if (isPaid) break;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
 
-      const isPaid = verifyRes.paymentStatus === "Paid" || verifyRes.orderStatus === "PAID";
+      if (isPaid && verifyRes) {
+        // 2. Update the existing order to Paid
+        await updateOrderPayment(orderId, "Paid", res.orderId, verifyRes.paymentTxnId, verifyRes.paymentModeDetails);
 
-      await createOrder({
-        customerName: name,
-        customerEmail: email,
-        customerPhone: phone,
-        shippingAddress: address,
-        items: orderPayloadItems,
-        total: finalTotal,
-        paymentMethod: "Cashfree",
-        paymentStatus: isPaid ? "Paid" : "Pending",
-        cfOrderId: res.cfOrderId,
-        paymentId: res.orderId,
-        userId: user.uid,
-      });
+        if (appliedCoupon) {
+          await incrementCouponUsedCount(appliedCoupon.code);
+        }
 
-      toast.success("Payment completed successfully!");
-      setOrderSuccess(true);
-      setTimeout(() => {
-        items.forEach((i) => removeItem(i.name));
-        setIsCheckingOut(false);
-        setIsProcessingPayment(false);
-        setOrderSuccess(false);
-        setAppliedCoupon(null);
-        closeCart();
-      }, 2500);
+        sendNtfyNotification({
+          title: "New Paid Order Placed! 💰",
+          message: `Order ID: ${orderId}\nCustomer: ${name}\nPhone: ${phone}\nTotal Amount: ₹${finalTotal}\nPayment Method: Cashfree\nTxn ID: ${verifyRes.paymentTxnId || "N/A"}\nItems: ${orderPayloadItems.map(i => `${i.name} (Qty: ${i.qty})`).join(", ")}`,
+          priority: "high",
+          tags: "shopping_bags,moneybag",
+        });
+
+        toast.success("Payment completed successfully!");
+        setOrderSuccess(true);
+        setTimeout(() => {
+          items.forEach((i) => removeItem(i.name));
+          setIsCheckingOut(false);
+          setIsProcessingPayment(false);
+          setOrderSuccess(false);
+          setAppliedCoupon(null);
+          closeCart();
+        }, 2500);
+      } else {
+        if (checkoutResult?.error) {
+          throw new Error(checkoutResult.error.message || "Payment cancelled or failed.");
+        }
+        throw new Error("Payment verification failed or session expired. Order created as pending.");
+      }
     } catch (err: any) {
       console.error("Cashfree checkout error:", err);
       const errMsg = err?.message || "Payment could not be completed. Please try again.";
@@ -1420,19 +1543,10 @@ function CartDrawer() {
                         <div className="font-display text-base text-forest truncate font-bold">{i.name}</div>
                         <div className="text-xs text-gold font-semibold mt-0.5">{i.price}</div>
                         <div className="mt-2.5 flex items-center gap-3">
-                          <button
-                            onClick={() => setQty(i.name, i.qty - 1)}
-                            className="w-7 h-7 rounded-full border border-gold/30 text-forest text-xs hover:bg-gold/10 flex items-center justify-center cursor-pointer"
-                          >
-                            −
-                          </button>
-                          <span className="text-xs font-bold text-forest w-4 text-center">{i.qty}</span>
-                          <button
-                            onClick={() => setQty(i.name, i.qty + 1)}
-                            className="w-7 h-7 rounded-full border border-gold/30 text-forest text-xs hover:bg-gold/10 flex items-center justify-center cursor-pointer"
-                          >
-                            +
-                          </button>
+                          <QuantityInput
+                            value={i.qty}
+                            onChange={(qty) => setQty(i.name, qty)}
+                          />
                           <button
                             onClick={() => removeItem(i.name)}
                             className="ml-auto text-[10px] uppercase font-bold text-forest/50 hover:text-red-700 transition cursor-pointer"
@@ -1558,11 +1672,20 @@ function CartDrawer() {
                     <input
                       type="tel"
                       required
-                      maxLength={10}
                       pattern="[6-9][0-9]{9}"
+                      title="Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9"
                       placeholder="10-Digit Mobile Number (e.g. 9876543210)"
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d]/g, ""))}
+                      onChange={(e) => {
+                        let digits = e.target.value.replace(/[^\d]/g, "");
+                        if (digits.startsWith("91") && digits.length > 10) {
+                          digits = digits.substring(2);
+                        }
+                        if (digits.startsWith("0")) {
+                          digits = digits.substring(1);
+                        }
+                        setCustomerPhone(digits.slice(0, 10));
+                      }}
                       className="w-full p-3 rounded-xl border border-gold/30 bg-ivory text-forest text-xs focus:outline-none focus:border-gold font-mono"
                     />
                     <textarea

@@ -44,6 +44,8 @@ export interface OrderItem {
   deliveredAt?: string;
   paymentTxnId?: string;
   paymentModeDetails?: string;
+  couponCode?: string;
+  discountAmount?: number;
 }
 
 
@@ -225,10 +227,6 @@ export function useOrders() {
       if (paymentId) updateData.paymentId = paymentId;
       if (paymentTxnId) updateData.paymentTxnId = paymentTxnId;
       if (paymentModeDetails) updateData.paymentModeDetails = paymentModeDetails;
-      if (paymentStatus === "Paid") {
-        updateData.status = "Processing" as OrderStatus;
-        updateData.processingAt = todayStr;
-      }
       await updateDoc(docRef, updateData);
     } else {
       const updated = orders.map((o) => {
@@ -237,10 +235,6 @@ export function useOrders() {
           if (paymentId) newOrder.paymentId = paymentId;
           if (paymentTxnId) newOrder.paymentTxnId = paymentTxnId;
           if (paymentModeDetails) newOrder.paymentModeDetails = paymentModeDetails;
-          if (paymentStatus === "Paid") {
-            newOrder.status = "Processing" as OrderStatus;
-            newOrder.processingAt = todayStr;
-          }
           return newOrder;
         }
         return o;
