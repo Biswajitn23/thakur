@@ -138,13 +138,23 @@ function LoginPage() {
   };
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden bg-[#faf8f5] text-stone-900 grid grid-cols-1 md:grid-cols-2 font-sans antialiased">
+    <div className="min-h-screen md:h-screen md:max-h-screen md:overflow-hidden bg-[#faf8f5] text-stone-900 flex flex-col md:grid md:grid-cols-2 font-sans antialiased">
       {/* Left Column: Traditional Image & Title */}
-      <div className="bg-[#f2ebe1] flex flex-col items-center justify-center p-8 md:p-16 border-r border-[#ebdcc9] h-full overflow-y-auto scrollbar-none">
-        <div className="max-w-md text-center space-y-8 py-8">
+      <div className="bg-[#f2ebe1] flex flex-col items-center justify-center p-8 md:p-16 border-b md:border-b-0 md:border-r border-[#ebdcc9] w-full md:h-full md:overflow-y-auto scrollbar-none relative">
+        {/* Back Button */}
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 z-10">
+          <button
+            onClick={handleBack}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-900/20 hover:border-amber-900/40 text-[#082a1c] hover:text-amber-900 text-xs font-semibold uppercase tracking-wider transition bg-white/80 hover:bg-white shadow-sm cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-800" />
+            <span>Back</span>
+          </button>
+        </div>
+        <div className="max-w-md text-center space-y-6 md:space-y-8 py-6 md:py-8">
           {/* Arched image */}
           <div 
-            className="relative aspect-[3/4] max-w-sm mx-auto overflow-hidden shadow-2xl border border-stone-200"
+            className="relative aspect-[3/4] max-w-[180px] md:max-w-sm mx-auto overflow-hidden shadow-2xl border border-stone-200"
             style={{ borderRadius: "160px 160px 24px 24px" }}
           >
             <img 
@@ -155,29 +165,32 @@ function LoginPage() {
           </div>
           
           <div className="space-y-3">
-            <h2 className="font-serif text-5xl md:text-6xl font-bold italic tracking-wide text-[#082a1c]">
+            <h2 className="font-serif text-4xl md:text-6xl font-bold italic tracking-wide text-[#082a1c]">
               Enter the Ritual.
             </h2>
-            <p className="font-serif text-base italic text-amber-900/80">
+            <p className="font-serif text-sm md:text-base italic text-amber-900/80">
               Rooted in Chhattisgarh, crafted for the discerning soul.
             </p>
           </div>
+
+          {/* Scroll Down Indicator for Mobile */}
+          <button
+            onClick={() => document.getElementById("login-form-section")?.scrollIntoView({ behavior: "smooth" })}
+            className="md:hidden mt-8 flex flex-col items-center gap-2 text-[#082a1c]/70 hover:text-[#082a1c] transition cursor-pointer group mx-auto"
+          >
+            <span className="text-[10px] uppercase tracking-[0.25em] font-bold">Scroll to Sign In</span>
+            <div className="w-8 h-8 rounded-full border border-stone-300 flex items-center justify-center animate-bounce group-hover:border-[#082a1c] bg-white shadow-sm">
+              <svg className="w-3.5 h-3.5 text-stone-500 group-hover:text-[#082a1c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
         </div>
       </div>
 
       {/* Right Column: Interactive Ritual Form */}
-      <div className="bg-[#faf8f5] flex flex-col items-center justify-center p-8 md:p-16 h-full overflow-y-auto">
-        <div className="w-full max-w-md space-y-8">
-          {/* Top Header with Back Button */}
-          <div className="flex items-center justify-start border-b border-amber-900/10 pb-4">
-            <button
-              onClick={handleBack}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-900/20 hover:border-amber-900/40 text-[#082a1c] hover:text-amber-900 text-xs font-semibold uppercase tracking-wider transition bg-white/80 hover:bg-white shadow-sm cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4 text-amber-800" />
-              <span>Back</span>
-            </button>
-          </div>
+      <div id="login-form-section" className="bg-[#faf8f5] flex flex-col items-center justify-center p-8 md:p-16 w-full md:h-full md:overflow-y-auto">
+        <div className="w-full max-w-md space-y-8 py-4 md:py-0">
           
           {/* Active Session Notification */}
           {user && (

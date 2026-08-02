@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import brandLogo from "@/assets/logo.png";
 import {
@@ -23,6 +23,23 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        userDropdownOpen &&
+        userDropdownRef.current &&
+        !userDropdownRef.current.contains(event.target as Node)
+      ) {
+        setUserDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [userDropdownOpen]);
 
   const handleLogout = async () => {
     setUserDropdownOpen(false);
@@ -66,9 +83,10 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
             </button>
             <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 hidden group-hover:block w-72">
               <div className="rounded-2xl border border-gold/25 bg-ivory shadow-luxe p-4 space-y-2">
-                <Link
+                 <Link
                   to="/"
-                  hash="products"
+                  search={{ concern: "hairfall" }}
+                  hash="products-list"
                   className="block px-3 py-2 rounded-lg hover:bg-gold/10 text-forest hover:text-gold transition"
                 >
                   <div className="font-display font-semibold">Hair Care Oils</div>
@@ -76,7 +94,8 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
                 </Link>
                 <Link
                   to="/"
-                  hash="products"
+                  search={{ concern: "pain" }}
+                  hash="products-list"
                   className="block px-3 py-2 rounded-lg hover:bg-gold/10 text-forest hover:text-gold transition"
                 >
                   <div className="font-display font-semibold">Pain Relief Oils</div>
@@ -84,7 +103,8 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
                 </Link>
                 <Link
                   to="/"
-                  hash="products"
+                  search={{ concern: "ritual" }}
+                  hash="products-list"
                   className="block px-3 py-2 rounded-lg hover:bg-gold/10 text-forest hover:text-gold transition"
                 >
                   <div className="font-display font-semibold">Combo Ritual Packs</div>
@@ -149,7 +169,7 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
 
           {/* User Profile / Login Sync */}
           {user ? (
-            <div className="relative">
+            <div className="relative" ref={userDropdownRef}>
               <button
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gold/30 text-forest hover:bg-gold/10 text-xs font-semibold tracking-wider uppercase transition shrink-0 cursor-pointer"
@@ -166,10 +186,6 @@ export function SiteHeader({ activePage }: { activePage?: string }) {
               {/* Profile Dropdown Menu */}
               {userDropdownOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setUserDropdownOpen(false)}
-                  />
                   <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-gold/25 bg-ivory shadow-luxe p-4 z-20 space-y-3 text-left">
                     <div className="border-b border-gold/10 pb-2">
                       <div className="font-semibold text-xs text-forest">

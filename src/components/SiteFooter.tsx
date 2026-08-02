@@ -21,34 +21,49 @@ export function SiteFooter() {
     const emailClean = subscribeEmail.trim().toLowerCase();
 
     try {
-      console.log("Newsletter subscribe clicked. Config:", {
+      console.log("Newsletter subscribe clicked (Site Footer). Config:", {
         isFirebaseConfigured,
         db: !!db,
         email: emailClean,
-        projectId: db?.app.options.projectId,
-        authDomain: db?.app.options.authDomain
       });
+
+      // 1. Check local storage first (instant check)
+      const saved = localStorage.getItem("thakur_newsletter_subscribers");
+      const list = saved ? JSON.parse(saved) : [];
+      if (list.includes(emailClean)) {
+        toast.info("This email is already subscribed to our newsletter!");
+        setSubscribeEmail("");
+        return;
+      }
+
+      // 2. Check Firestore if configured
       if (isFirebaseConfigured && db) {
-        const docRef = await addDoc(collection(db, "newsletter_subscribers"), {
+        const q = query(
+          collection(db, "newsletter_subscribers"),
+          where("email", "==", emailClean)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          // Sync local storage so we don't query Firestore again next time
+          list.push(emailClean);
+          localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
+          
+          toast.info("This email is already subscribed to our newsletter!");
+          setSubscribeEmail("");
+          return;
+        }
+
+        await addDoc(collection(db, "newsletter_subscribers"), {
           email: emailClean,
           source: "GoDaddy / Website Footer",
           createdAt: serverTimestamp(),
           date: new Date().toLocaleDateString("en-IN"),
         });
-        alert(`SUCCESS: Stored in Firestore database! Document ID: ${docRef.id}`);
       }
 
-      // Save locally
-      const saved = localStorage.getItem("thakur_newsletter_subscribers");
-      const list = saved ? JSON.parse(saved) : [];
-      if (!list.includes(emailClean)) {
-        list.push(emailClean);
-        localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
-      } else if (!isFirebaseConfigured) {
-        toast.info("This email is already subscribed to our newsletter!");
-        setSubscribeEmail("");
-        return;
-      }
+      // 3. Save new subscriber locally
+      list.push(emailClean);
+      localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
 
       toast.success(
         "Thank you for subscribing! You are now subscribed to Thakur Yograj Ayurveda updates."
@@ -56,7 +71,6 @@ export function SiteFooter() {
       setSubscribeEmail("");
     } catch (err: any) {
       console.error("Error subscribing:", err);
-      alert(`ERROR subscribing: ${err.message || err}`);
       toast.error("Error subscribing. Please try again.");
     }
   };
@@ -164,22 +178,22 @@ export function SiteFooter() {
             <div className="text-xs tracking-[0.3em] uppercase font-semibold text-forest/50">Shop</div>
             <ul className="mt-4 space-y-3 text-sm text-forest/80">
               <li>
-                <Link to="/" hash="products" className="hover:text-gold transition">
+                <Link to="/" search={{ concern: "hairfall" }} hash="products-list" className="hover:text-gold transition">
                   Hair Oil
                 </Link>
               </li>
               <li>
-                <Link to="/" hash="products" className="hover:text-gold transition">
+                <Link to="/" search={{ concern: "pain" }} hash="products-list" className="hover:text-gold transition">
                   Pain Relief Oil
                 </Link>
               </li>
               <li>
-                <Link to="/" hash="products" className="hover:text-gold transition">
+                <Link to="/" search={{ concern: "ritual" }} hash="products-list" className="hover:text-gold transition">
                   Combo Packs
                 </Link>
               </li>
               <li>
-                <Link to="/" hash="products" className="hover:text-gold transition">
+                <Link to="/" search={{ concern: "ritual" }} hash="products-list" className="hover:text-gold transition">
                   Gift Sets
                 </Link>
               </li>

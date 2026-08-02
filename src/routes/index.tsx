@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { toast } from "sonner";
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useProducts, type ProductItem } from "@/hooks/use-products";
 import { useOrders } from "@/hooks/use-orders";
@@ -9,7 +10,7 @@ import { useStoreSettings } from "@/hooks/use-store-settings";
 import { createCashfreeOrderFn, verifyCashfreeOrderFn } from "@/lib/cashfree-server";
 import { getCashfreeInstance } from "@/lib/cashfree";
 import { sendNtfyNotification } from "@/lib/ntfy";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import painOilAsset from "@/assets/pain-oil.asset.json";
 import hairOilBoxAsset from "@/assets/hair-oil-box.asset.json";
@@ -106,7 +107,12 @@ function QuantityInput({ value, onChange }: { value: number; onChange: (qty: num
   );
 }
 
+const indexSearchSchema = z.object({
+  concern: z.enum(["all", "hairfall", "pain", "ritual"]).optional(),
+});
+
 export const Route = createFileRoute("/")({
+  validateSearch: indexSearchSchema,
   head: () => ({
     meta: [
       { title: "Thakur Yograj — Ayurvedic Hair Oil & Pain Relief Oil" },
@@ -228,8 +234,18 @@ export const CartContext = createContext<{
 function Index() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { concern: searchConcern } = Route.useSearch();
   const [concern, setConcern] = useState<Concern>("all");
   const [isSearchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchConcern) {
+      setConcern(searchConcern);
+      setTimeout(() => {
+        document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+    }
+  }, [searchConcern]);
 
   const {
     items,
@@ -242,7 +258,7 @@ function Index() {
     count,
     subtotal,
     wishlist,
-    toggleWishlist,
+    toggleWishlist: globalToggleWishlist,
     isWishlistOpen,
     openWishlist,
     closeWishlist,
@@ -253,6 +269,33 @@ function Index() {
     setAppliedCoupon,
   } = useCartContext();
 
+  // Restore pending action after login
+  useEffect(() => {
+    if (user) {
+      const pending = sessionStorage.getItem("pending_action");
+      if (pending) {
+        try {
+          const action = JSON.parse(pending);
+          if (action.type === "add_to_cart") {
+            globalAddItem(action.product, false);
+            if (action.openCart) {
+              setTimeout(() => {
+                openCart();
+              }, 500);
+            }
+            toast.success(`"${action.product.name}" has been added to your shopping bag!`);
+          } else if (action.type === "wishlist") {
+            globalToggleWishlist(action.product);
+          }
+        } catch (e) {
+          console.error("Failed to parse pending action:", e);
+        } finally {
+          sessionStorage.removeItem("pending_action");
+        }
+      }
+    }
+  }, [user]);
+
   // Auto-open cart sidebar when navigating back from checkout via "Shopping Bag" step
   useEffect(() => {
     if (sessionStorage.getItem("open_cart_on_home") === "1") {
@@ -262,14 +305,41 @@ function Index() {
     }
   }, []);
 
+  function toggleWishlist(p: { name: string; price: string; img: string }) {
+    if (!user) {
+      sessionStorage.setItem("pending_action", JSON.stringify({ type: "wishlist", product: p }));
+      toast("Authentication Required", {
+        description: "Please sign in to save items to your wishlist. We've saved your selection!",
+        action: {
+          label: "Sign In",
+          onClick: () => navigate({ to: "/login" }),
+        },
+      });
+      setTimeout(() => {
+        navigate({ to: "/login" });
+      }, 1200);
+      return;
+    }
+    globalToggleWishlist(p);
+  }
+
   function addItem(
     p: { name: string; price: string; img: string },
     clickEvent?: React.MouseEvent<HTMLElement>,
     openCartAfter: boolean = false
   ) {
     if (!user) {
-      toast.error("Please log in to your account to add items to your shopping bag.");
-      navigate({ to: "/login" });
+      sessionStorage.setItem("pending_action", JSON.stringify({ type: "add_to_cart", product: p, openCart: openCartAfter }));
+      toast("Authentication Required", {
+        description: "Please sign in to add items to your shopping bag. We've saved your selection!",
+        action: {
+          label: "Sign In",
+          onClick: () => navigate({ to: "/login" }),
+        },
+      });
+      setTimeout(() => {
+        navigate({ to: "/login" });
+      }, 1200);
       return;
     }
 
@@ -357,11 +427,28 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        isProfileDropdownOpen &&
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target as Node)
+      ) {
+        setProfileDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isProfileDropdownOpen]);
 
   function goShop(id: Concern) {
     setConcern(id);
     setMobileMenuOpen(false);
-    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
   }
 
   return (
@@ -464,7 +551,7 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
             </button>
           )}
           {user ? (
-            <div className="relative">
+            <div className="relative" ref={profileDropdownRef}>
               <button
                 onClick={() => setProfileDropdownOpen(!isProfileDropdownOpen)}
                 className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full border border-gold/40 bg-gradient-to-r from-forest/5 via-gold/10 to-forest/5 text-forest hover:border-gold hover:shadow-md transition shrink-0 cursor-pointer group"
@@ -478,10 +565,9 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
                 </span>
                 <span className="text-[10px] text-forest/50 font-bold group-hover:text-gold transition">▼</span>
               </button>
-
+ 
               {isProfileDropdownOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setProfileDropdownOpen(false)} />
                   <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-gold/30 bg-ivory shadow-2xl p-4 z-20 space-y-3.5 text-left backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex items-center gap-3 border-b border-gold/15 pb-3">
                       <div className="w-10 h-10 rounded-full bg-forest text-gold font-bold text-sm grid place-items-center border border-gold/40 shadow-md shrink-0">
@@ -545,7 +631,7 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
             </Link>
           )}
           <a
-            href="#products"
+            href="#products-list"
             className="hidden sm:inline-block px-5 py-2.5 rounded-full bg-forest text-ivory text-sm tracking-wide hover:bg-forest-deep transition shrink-0"
           >
             Shop Now
@@ -1055,6 +1141,7 @@ function Products() {
           }
           copy="Each formulation is slow-infused with rare herbs, hand-finished, and tested with care — so every drop honours the tradition it was born from."
         />
+        <div id="products-list" className="scroll-mt-28" />
 
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           {CONCERNS.map((c) => (
@@ -2784,7 +2871,7 @@ function FeaturedCollection() {
           {cards.map((c) => (
             <a
               key={c.t}
-              href="#products"
+              href="#products-list"
               className="group relative rounded-[2rem] overflow-hidden aspect-[3/4] shadow-luxe border border-gold/30"
             >
               <img
@@ -2992,7 +3079,7 @@ function FinalCTA() {
             Free express delivery on every order above ₹799. 30-day satisfaction guarantee.
           </p>
           <a
-            href="#products"
+            href="#products-list"
             className="mt-10 inline-flex items-center gap-3 px-10 py-5 rounded-full bg-gold text-forest text-sm tracking-[0.2em] uppercase hover:bg-gold-soft transition shadow-luxe"
           >
             Shop the Collection <ArrowIcon />
@@ -3023,7 +3110,32 @@ function Footer() {
         email: emailClean,
       });
 
+      // 1. Check local storage first (instant check)
+      const saved = localStorage.getItem("thakur_newsletter_subscribers");
+      const list = saved ? JSON.parse(saved) : [];
+      if (list.includes(emailClean)) {
+        toast.info("This email is already subscribed to our newsletter!");
+        setSubscribeEmail("");
+        return;
+      }
+
+      // 2. Check Firestore if configured
       if (isFirebaseConfigured && db) {
+        const q = query(
+          collection(db, "newsletter_subscribers"),
+          where("email", "==", emailClean)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          // Sync local storage so we don't query Firestore again next time
+          list.push(emailClean);
+          localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
+          
+          toast.info("This email is already subscribed to our newsletter!");
+          setSubscribeEmail("");
+          return;
+        }
+
         await addDoc(collection(db, "newsletter_subscribers"), {
           email: emailClean,
           source: "GoDaddy / Website Footer",
@@ -3032,17 +3144,9 @@ function Footer() {
         });
       }
 
-      // Save locally
-      const saved = localStorage.getItem("thakur_newsletter_subscribers");
-      const list = saved ? JSON.parse(saved) : [];
-      if (!list.includes(emailClean)) {
-        list.push(emailClean);
-        localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
-      } else if (!isFirebaseConfigured) {
-        toast.info("This email is already subscribed to our newsletter!");
-        setSubscribeEmail("");
-        return;
-      }
+      // 3. Save new subscriber locally
+      list.push(emailClean);
+      localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
 
       toast.success(
         "Thank you for subscribing! Check your inbox for our latest Ayurvedic guides and exclusive offers."
@@ -3059,13 +3163,13 @@ function Footer() {
     const l = label.toLowerCase();
     if (l === "hair oil") {
       setConcern("hairfall");
-      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+      document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
     } else if (l === "pain relief oil") {
       setConcern("pain");
-      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+      document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
     } else if (l === "combo packs" || l === "gift sets") {
       setConcern("ritual");
-      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+      document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
     } else if (l === "our story") {
       document.getElementById("story")?.scrollIntoView({ behavior: "smooth" });
     } else if (l === "ingredients") {
@@ -3374,7 +3478,7 @@ function RangeOfSolutions() {
 
   function goShop(id: Concern) {
     setConcern(id);
-    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("products-list")?.scrollIntoView({ behavior: "smooth" });
   }
 
   const ranges = [
@@ -3665,7 +3769,7 @@ function VideoGallery() {
 
                   {/* Shop CTA */}
                   <a
-                    href="#products"
+                    href="#products-list"
                     className="mt-6 inline-flex items-center gap-1.5 text-xs text-gold font-bold tracking-wide uppercase group-hover:text-gold-soft transition"
                   >
                     Shop Featured <ArrowIcon />
