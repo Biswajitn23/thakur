@@ -287,3 +287,13 @@ html, body {
 .animate-fade-in-up {
   animation: fade-in-up 0.8s cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
 }
+
+/* Hide scrollbars for carousels */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

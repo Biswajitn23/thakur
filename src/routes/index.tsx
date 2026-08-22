@@ -32,6 +32,13 @@ import tyPainOilLifestyle from "@/assets/lifestyle_pain_oil_product.png";
 import brandLogo from "@/assets/logo.png";
 import hairBeforeComp from "@/assets/hair_before_comparison.png";
 import hairAfterComp from "@/assets/hair_after_comparison.png";
+import biotiqueHeroBg from "@/assets/biotique_hero_bg.png";
+import { SiteHeader } from "@/components/SiteHeader";
+import { LightningSaleSection } from "@/components/LightningSaleSection";
+import { AuthModal } from "@/components/AuthModal";
+import { ProductCard as ModernProductCard } from "@/components/ui/ProductCard";
+import { ShieldCheck, Sparkles, Heart, Leaf, Award } from "lucide-react";
+
 
 
 
@@ -237,6 +244,10 @@ function Index() {
   const { concern: searchConcern } = Route.useSearch();
   const [concern, setConcern] = useState<Concern>("all");
   const [isSearchOpen, setSearchOpen] = useState(false);
+  const [currencySymbol, setCurrencySymbol] = useState("₹");
+  const [currencyRate, setCurrencyRate] = useState(1);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const { products } = useProducts();
 
   useEffect(() => {
     if (searchConcern) {
@@ -300,7 +311,6 @@ function Index() {
   useEffect(() => {
     if (sessionStorage.getItem("open_cart_on_home") === "1") {
       sessionStorage.removeItem("open_cart_on_home");
-      // slight delay so the page renders first
       setTimeout(() => openCart(), 200);
     }
   }, []);
@@ -308,16 +318,7 @@ function Index() {
   function toggleWishlist(p: { name: string; price: string; img: string }) {
     if (!user) {
       sessionStorage.setItem("pending_action", JSON.stringify({ type: "wishlist", product: p }));
-      toast("Authentication Required", {
-        description: "Please sign in to save items to your wishlist. We've saved your selection!",
-        action: {
-          label: "Sign In",
-          onClick: () => navigate({ to: "/login" }),
-        },
-      });
-      setTimeout(() => {
-        navigate({ to: "/login" });
-      }, 1200);
+      setAuthModalOpen(true);
       return;
     }
     globalToggleWishlist(p);
@@ -330,16 +331,7 @@ function Index() {
   ) {
     if (!user) {
       sessionStorage.setItem("pending_action", JSON.stringify({ type: "add_to_cart", product: p, openCart: openCartAfter }));
-      toast("Authentication Required", {
-        description: "Please sign in to add items to your shopping bag. We've saved your selection!",
-        action: {
-          label: "Sign In",
-          onClick: () => navigate({ to: "/login" }),
-        },
-      });
-      setTimeout(() => {
-        navigate({ to: "/login" });
-      }, 1200);
+      setAuthModalOpen(true);
       return;
     }
 
@@ -356,6 +348,41 @@ function Index() {
       openCart();
     }
   }
+
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Biotique Ayurveda — Thakur Yograj",
+    "url": "https://thakuryograj.com",
+    "logo": "https://thakuryograj.com/favicon.png",
+    "sameAs": ["https://facebook.com/biotique", "https://instagram.com/biotique"],
+  };
+
+  const productListJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": products.map((p, idx) => ({
+      "@type": "ListItem",
+      "position": idx + 1,
+      "item": {
+        "@type": "Product",
+        "name": p.name,
+        "description": p.subtitle,
+        "image": p.img,
+        "offers": {
+          "@type": "Offer",
+          "priceCurrency": "INR",
+          "price": p.price.replace(/[^0-9]/g, ""),
+          "availability": "https://schema.org/InStock",
+        },
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": p.rating,
+          "reviewCount": p.reviews,
+        },
+      },
+    })),
+  };
 
   return (
     <ConcernContext.Provider value={{ concern, setConcern }}>
@@ -382,15 +409,35 @@ function Index() {
           setAppliedCoupon,
         }}
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productListJsonLd) }}
+        />
         <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
-          <Navbar onSearchClick={() => setSearchOpen(true)} />
+          <SiteHeader
+            currencySymbol={currencySymbol}
+            setCurrencySymbol={setCurrencySymbol}
+            currencyRate={currencyRate}
+            setCurrencyRate={setCurrencyRate}
+            onOpenAuthModal={() => setAuthModalOpen(true)}
+          />
           <Hero />
           <TrustBar />
+          <LightningSaleSection
+            products={products}
+            onAddToCart={(p, qty, e) => addItem(p, e, false)}
+            currencySymbol={currencySymbol}
+            currencyRate={currencyRate}
+          />
           <Marquee />
           <Philosophy />
           <CertificationGrid />
           <RangeOfSolutions />
-          <Products />
+          <Products currencySymbol={currencySymbol} currencyRate={currencyRate} />
           <Spotlight />
           <Ingredients />
           <Benefits />
@@ -414,11 +461,13 @@ function Index() {
           <DoshaQuizModal />
           <WhatsAppFloat />
           <SearchOverlay open={isSearchOpen} onClose={() => setSearchOpen(false)} />
+          <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
         </div>
       </CartContext.Provider>
     </ConcernContext.Provider>
   );
 }
+
 
 /* ---------------- NAVBAR ---------------- */
 function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
@@ -759,202 +808,151 @@ const HERO_SLIDES = [
 
 function Hero() {
   const { setConcern } = useContext(ConcernContext);
-  const [activeSlide, setActiveSlide] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlide((s) => (s + 1) % HERO_SLIDES.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
 
   function goToConcern(id: Concern) {
     setConcern(id);
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  function prevSlide() {
-    setActiveSlide((s) => (s - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
-  }
-
-  // Auto-slide indicator triggers or click triggers
-  function nextSlide() {
-    setActiveSlide((s) => (s + 1) % HERO_SLIDES.length);
-  }
-
-  const current = HERO_SLIDES[activeSlide];
-
   return (
-    <section className="relative pt-24 pb-16 lg:pt-28 lg:pb-20 overflow-hidden bg-cream/10">
-      {/* Background slide texture */}
-      <div
-        className="absolute inset-0 -z-10 opacity-35 transition-all duration-750"
-        style={{
-          backgroundImage: `url(${heroBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      />
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-ivory/50 via-ivory/80 to-ivory" />
+    <section className="relative w-full bg-[#d7e9d7] overflow-hidden border-b border-emerald-950/15">
+      {/* Top Breadcrumb Bar */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 pt-4 pb-1 text-xs font-semibold text-emerald-950/70 flex items-center gap-1.5">
+        <Link to="/" className="hover:text-emerald-950 transition">Home</Link>
+        <span>›</span>
+        <span className="text-emerald-950 font-bold">All products</span>
+      </div>
 
-      {/* Decorative Botanical Corners */}
-      <BotanicalCorner className="top-24 -left-6 hidden lg:block opacity-60" />
-      <BotanicalCorner className="bottom-10 right-0 -scale-x-100 hidden lg:block opacity-60" />
+      {/* Hero Content Grid */}
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 lg:py-12 flex flex-col lg:flex-row items-center justify-between gap-8 min-h-[460px] lg:min-h-[500px]">
+        {/* Background Image Layer */}
+        <div
+          className="absolute inset-0 z-0 opacity-40 mix-blend-multiply bg-cover bg-right lg:bg-center pointer-events-none"
+          style={{ backgroundImage: `url(${biotiqueHeroBg})` }}
+        />
 
-      {/* Floating ingredient chips */}
-      <FloatingChip label="Amla" className="left-[2%] top-[24%] animate-float-slow" />
-      <FloatingChip label="Hibiscus" className="right-[2%] top-[30%] animate-float-slower" />
-      <FloatingChip label="Neem" className="left-[3%] bottom-[20%] animate-float-slower" />
-      <FloatingChip label="Bhringraj" className="right-[3%] bottom-[26%] animate-float-slow" />
-
-      <div className="relative max-w-7xl mx-auto px-6 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-10 items-center min-h-[480px]">
-          {/* Left slide details wrapper */}
-          <div className="lg:col-span-7 grid grid-cols-1 grid-rows-1">
-            {HERO_SLIDES.map((slide, idx) => {
-              const isActive = activeSlide === idx;
-              return (
-                <div
-                  key={idx}
-                  className={`col-start-1 row-start-1 transition-all duration-1000 ease-in-out flex flex-col justify-center ${isActive
-                    ? "opacity-100 translate-y-0 z-10 pointer-events-auto"
-                    : "opacity-0 translate-y-8 z-0 pointer-events-none"
-                    }`}
-                >
-                  <div className="inline-flex items-center gap-3 mb-8">
-                    <span className="h-px w-10 bg-gold" />
-                    <span className="text-xs tracking-[0.35em] uppercase text-forest/70 font-semibold">
-                      {slide.eyebrow}
-                    </span>
-                  </div>
-                  <h1 className="font-display text-5xl md:text-7xl lg:text-[5.5rem] leading-[0.98] text-forest">
-                    {slide.title}
-                    <br />
-                    <span className="italic text-gradient-gold">{slide.highlight}</span>
-                  </h1>
-                  <p className="mt-8 max-w-xl text-base md:text-lg leading-relaxed text-forest/70">
-                    {slide.desc}
-                  </p>
-
-                  <div className="mt-10 flex flex-wrap items-center gap-4">
-                    <button
-                      onClick={() => goToConcern(slide.concern)}
-                      className="group inline-flex items-center gap-3 px-8 py-4 rounded-full bg-forest text-ivory text-xs tracking-[0.15em] uppercase font-bold hover:bg-forest-deep transition shadow-luxe"
-                    >
-                      {slide.btnText}
-                      <ArrowIcon />
-                    </button>
-                    <a
-                      href="#story"
-                      className="inline-flex items-center gap-2 px-6 py-4 text-xs tracking-[0.15em] uppercase font-bold text-forest border-b border-gold/60 hover:border-gold transition"
-                    >
-                      Discover Our Heritage
-                    </a>
-                  </div>
-
-                  <div className="mt-14 flex items-center gap-8 text-[10px] tracking-widest uppercase text-forest/65 font-bold">
-                    <span className="flex items-center gap-2">
-                      <Dot /> 100% Ayurvedic
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <Dot /> Chemical Free
-                    </span>
-                    <span className="hidden sm:flex items-center gap-2">
-                      <Dot /> Lab Validated
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+        {/* LEFT COLUMN: Headline & Offer Box */}
+        <div className="relative z-10 lg:w-6/12 flex flex-col items-start text-left">
+          {/* Biotique Logo Mark */}
+          <div className="flex items-center gap-2 mb-3">
+            <img src={brandLogo} alt="BIOTIQUE" className="h-10 sm:h-12 w-auto drop-shadow-sm" />
+            <span className="text-[11px] font-extrabold tracking-[0.25em] text-emerald-950 uppercase">
+              ADVANCED AYURVEDA
+            </span>
           </div>
 
-          {/* Right Product Image wrapper */}
-          <div className="lg:col-span-5 grid grid-cols-1 grid-rows-1 justify-items-center">
-            {HERO_SLIDES.map((slide, idx) => {
-              const isActive = activeSlide === idx;
-              return (
-                <div
-                  key={`img-${idx}`}
-                  className={`col-start-1 row-start-1 w-full max-w-md px-6 transition-all duration-1000 ease-in-out ${isActive
-                    ? "opacity-100 scale-100 z-10 pointer-events-auto"
-                    : "opacity-0 scale-95 z-0 pointer-events-none"
-                    }`}
-                >
-                  <div className="relative">
-                    {/* Aura Background */}
-                    <div className="absolute -inset-8 rounded-full bg-gradient-to-tr from-gold/30 via-transparent to-forest/15 blur-3xl" />
+          {/* Main Headline */}
+          <h1 className="font-display font-black text-3xl sm:text-5xl lg:text-6xl text-emerald-950 leading-[1.08] tracking-tight">
+            Heal, hydrate, <br />
+            and restore <br />
+            <span className="font-sans font-normal text-emerald-800 text-2xl sm:text-4xl lg:text-5xl">
+              your summer radiance
+            </span>
+          </h1>
 
-                    {/* Product arched style wrapper */}
-                    <div
-                      className="relative aspect-[3/4] overflow-hidden shadow-2xl border border-gold/25 bg-cream/30"
-                      style={{ borderRadius: "160px 160px 24px 24px" }}
-                    >
-                      <img
-                        src={slide.img}
-                        alt={slide.badgeText}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+          {/* Outlined "Get 35% off on 1099" Box */}
+          <div className="relative mt-6 mb-6 w-full max-w-md border-2 border-emerald-950/80 rounded-3xl p-5 sm:p-6 text-center bg-[#d7e9d7]/80 backdrop-blur-xs shadow-sm">
+            {/* Intersecting "Get" tag */}
+            <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#d7e9d7] px-4 font-bold text-emerald-950 text-sm tracking-wide">
+              Get
+            </span>
+            <div className="font-display font-black text-5xl sm:text-6xl lg:text-7xl text-emerald-950 tracking-tight">
+              35% off
+            </div>
+            <div className="text-base sm:text-lg font-extrabold text-emerald-950 mt-1 uppercase tracking-wider">
+              on 1099
+            </div>
+          </div>
 
-                    {/* Bestseller/Tag floating badge */}
-                    <div className="absolute -bottom-6 -left-2 bg-ivory/95 backdrop-blur px-5 py-4 rounded-2xl border border-gold/30 shadow-luxe">
-                      <div className="text-[10px] tracking-[0.3em] uppercase text-forest/60 font-semibold">
-                        {slide.tag}
-                      </div>
-                      <div className="font-display text-xl text-forest mt-0.5">{slide.badgeText}</div>
-                    </div>
+          {/* Action CTAs */}
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={() => goToConcern("all")}
+              className="px-8 py-3.5 rounded-full bg-emerald-950 hover:bg-emerald-900 text-ivory text-xs font-bold uppercase tracking-[0.15em] transition shadow-md active:scale-95 cursor-pointer"
+            >
+              Shop Offer Now
+            </button>
+            <a
+              href="#products"
+              className="px-6 py-3.5 rounded-full border border-emerald-950/40 text-emerald-950 hover:bg-emerald-950/10 text-xs font-bold uppercase tracking-wider transition"
+            >
+              Explore Formulations
+            </a>
+          </div>
 
-                    {/* Price floating badge */}
-                    <div className="absolute -top-6 -right-2 bg-forest text-ivory px-5 py-4 rounded-2xl shadow-luxe">
-                      <div className="text-[10px] tracking-[0.3em] uppercase text-gold-soft font-semibold">
-                        Traditional Cooked
-                      </div>
-                      <div className="font-display text-xl mt-0.5">{slide.badgeVal}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          {/* Trust Badges Bar */}
+          <div className="mt-8 flex flex-wrap items-center gap-5 text-[11px] font-bold text-emerald-950/85 pt-4 border-t border-emerald-950/20">
+            <span className="flex items-center gap-1.5">🌿 Ayurvedic Goodness</span>
+            <span className="flex items-center gap-1.5">🌱 100% Botanical Extracts</span>
+            <span className="flex items-center gap-1.5">✨ Safe & Gentle on Skin</span>
+            <span className="flex items-center gap-1.5">🐰 Cruelty Free</span>
           </div>
         </div>
 
-        {/* Carousel controls */}
-        <div className="mt-12 flex items-center justify-between">
-          {/* Indicators */}
-          <div className="flex gap-2">
-            {HERO_SLIDES.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setActiveSlide(idx)}
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${activeSlide === idx ? "bg-forest w-8" : "bg-forest/20 hover:bg-forest/40"
-                  }`}
-                aria-label={`Go to slide ${idx + 1}`}
-              />
-            ))}
-          </div>
+        {/* RIGHT COLUMN: Featured 3 Product Bottles Standing on Table Surface */}
+        <div className="relative z-10 lg:w-6/12 flex items-end justify-center lg:justify-end w-full pt-4 lg:pt-0">
+          <div className="relative flex items-end justify-center gap-2 sm:gap-4 max-w-xl">
+            {/* Drop Shadow Table Base */}
+            <div className="absolute -bottom-3 left-0 right-0 h-6 bg-emerald-950/15 rounded-full blur-md" />
 
-          {/* Navigation Arrows */}
-          <div className="flex gap-3">
-            <button
-              onClick={prevSlide}
-              className="w-10 h-10 grid place-items-center rounded-full border border-gold/40 text-forest hover:bg-gold/15 transition-all"
-              aria-label="Previous slide"
-            >
-              ←
-            </button>
-            <button
-              onClick={nextSlide}
-              className="w-10 h-10 grid place-items-center rounded-full border border-gold/40 text-forest hover:bg-gold/15 transition-all"
-              aria-label="Next slide"
-            >
-              →
-            </button>
+            {/* Bottle 1: Papaya Deep Cleanse */}
+            <div className="relative z-10 w-28 sm:w-36 lg:w-44 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-white/95 p-2.5 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center">
+                <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-full mb-1">
+                  Face Wash
+                </span>
+                <img
+                  src={tyHairOil}
+                  alt="Papaya Deep Cleanse"
+                  className="w-full h-32 sm:h-44 object-contain drop-shadow-md"
+                />
+                <span className="text-[10px] font-extrabold text-emerald-950 mt-1 line-clamp-1">
+                  Papaya Cleanse
+                </span>
+              </div>
+            </div>
+
+            {/* Bottle 2: Sun Shield (Featured Center Orange Bottle) */}
+            <div className="relative z-20 w-32 sm:w-40 lg:w-48 -mb-2 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-gradient-to-b from-amber-50 to-amber-100 p-2.5 rounded-3xl border-2 border-amber-500/50 shadow-2xl backdrop-blur-xs flex flex-col items-center">
+                <span className="text-[9px] font-black uppercase bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full mb-1 shadow-sm">
+                  Sun Shield 50+ SPF
+                </span>
+                <img
+                  src={tyPainOil}
+                  alt="Sun Shield Sandalwood"
+                  className="w-full h-36 sm:h-52 object-contain drop-shadow-lg scale-105"
+                />
+                <span className="text-[10px] font-black text-amber-950 mt-1 line-clamp-1">
+                  Sandalwood Sunscreen
+                </span>
+              </div>
+            </div>
+
+            {/* Bottle 3: Morning Nectar Moisturizer */}
+            <div className="relative z-10 w-28 sm:w-36 lg:w-44 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-white/95 p-2.5 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center">
+                <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-full mb-1">
+                  Moisturizer
+                </span>
+                <img
+                  src={tyHairOilDuo}
+                  alt="Morning Nectar"
+                  className="w-full h-32 sm:h-44 object-contain drop-shadow-md"
+                />
+                <span className="text-[10px] font-extrabold text-emerald-950 mt-1 line-clamp-1">
+                  Morning Nectar
+                </span>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
     </section>
   );
 }
+
 
 function FloatingChip({ label, className }: { label: string; className: string }) {
   return (
@@ -1113,8 +1111,15 @@ const PRODUCTS = [
   },
 ];
 
-function Products() {
+function Products({
+  currencySymbol = "₹",
+  currencyRate = 1,
+}: {
+  currencySymbol?: string;
+  currencyRate?: number;
+}) {
   const { concern, setConcern } = useContext(ConcernContext);
+  const { addItem } = useContext(CartContext);
   const { products } = useProducts();
   const filtered = concern === "all" ? products : products.filter((p) => p.concern === concern);
 
@@ -1129,7 +1134,7 @@ function Products() {
   }
 
   return (
-    <section id="products" className="relative py-28 lg:py-40">
+    <section id="products" className="relative py-20 lg:py-28 bg-ivory/40">
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
         <SectionHeader
           eyebrow="The Collection"
@@ -1143,24 +1148,32 @@ function Products() {
         />
         <div id="products-list" className="scroll-mt-28" />
 
-        <div className="mt-10 flex flex-wrap justify-center gap-3">
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
           {CONCERNS.map((c) => (
             <button
               key={c.id}
               onClick={() => setConcern(c.id)}
-              className={`px-5 py-2 rounded-full border text-xs tracking-[0.15em] uppercase transition ${getTabClass(c.id)}`}
+              className={`px-5 py-2.5 rounded-full border text-xs font-bold tracking-[0.15em] uppercase transition cursor-pointer ${getTabClass(
+                c.id
+              )}`}
             >
               {c.label}
             </button>
           ))}
         </div>
 
-        <div className="mt-16 grid lg:grid-cols-3 gap-8">
+        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {filtered.map((p) => (
-            <ProductCard key={p.name} product={p} />
+            <ModernProductCard
+              key={p.id || p.name}
+              product={p}
+              onAddToCart={(prod, qty, e) => addItem(prod, e, false)}
+              currencySymbol={currencySymbol}
+              currencyRate={currencyRate}
+            />
           ))}
           {filtered.length === 0 && (
-            <p className="col-span-full text-center text-forest/60">
+            <p className="col-span-full text-center text-forest/60 py-12">
               No products match that concern yet — check back soon.
             </p>
           )}
@@ -1169,6 +1182,7 @@ function Products() {
     </section>
   );
 }
+
 
 function ProductCard({ product }: { product: ProductItem }) {
   const { addItem, wishlist, toggleWishlist } = useContext(CartContext);
