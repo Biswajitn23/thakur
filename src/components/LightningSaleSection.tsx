@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Zap, Clock, ChevronRight } from "lucide-react";
+import { Zap, Clock, ChevronRight, MessageCircle } from "lucide-react";
 import { ProductCard } from "@/components/ui/ProductCard";
 import type { ProductItem } from "@/hooks/use-products";
+import { getWhatsAppOrderUrl, WHATSAPP_CONTACT } from "@/lib/whatsapp";
 
 interface LightningSaleSectionProps {
   products: ProductItem[];
@@ -157,6 +158,37 @@ export function LightningSaleSection({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Special Price WhatsApp Promo Banner Above Carousel */}
+        <div className="relative z-10 mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-950 via-forest to-emerald-900 border-2 border-amber-400/40 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 text-ivory">
+          <div className="flex items-center gap-3.5 text-center md:text-left">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-700/80 border border-emerald-400/40 flex items-center justify-center shrink-0 shadow-inner">
+              <MessageCircle className="w-6 h-6 text-emerald-200 fill-emerald-300/30" />
+            </div>
+            <div>
+              <div className="font-display font-black text-base sm:text-lg text-amber-300 flex flex-wrap items-center gap-2 justify-center md:justify-start">
+                <span>Want to get a Special Price?</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-sm animate-pulse">
+                  Exclusive Deal
+                </span>
+              </div>
+              <p className="text-xs text-ivory/85 mt-0.5 leading-relaxed">
+                Shop with us directly on WhatsApp to unlock exclusive discounted pricing & instant dispatch!
+              </p>
+            </div>
+          </div>
+
+          <a
+            href={getWhatsAppOrderUrl({ note: "Hi Thakur Yograj, I want to get the special price on the Lightning Flash Sale products!" })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-extrabold uppercase tracking-wider transition shadow-lg shrink-0 active:scale-95 group cursor-pointer border border-emerald-400/30"
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-200" />
+            <span>Shop on WhatsApp: {WHATSAPP_CONTACT.displayPhone}</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          </a>
         </div>
 
         {/* Product Carousel / Grid Container */}

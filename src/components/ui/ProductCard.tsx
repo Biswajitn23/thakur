@@ -94,9 +94,8 @@ export function ProductCard({
           aria-label="Add to Wishlist"
         >
           <Heart
-            className={`w-4 h-4 transition-transform ${
-              isWishlisted ? "fill-rose-500 text-rose-500 scale-110" : ""
-            }`}
+            className={`w-4 h-4 transition-transform ${isWishlisted ? "fill-rose-500 text-rose-500 scale-110" : ""
+              }`}
           />
         </button>
 
@@ -195,11 +194,10 @@ export function ProductCard({
               type="button"
               onClick={handleAdd}
               disabled={isAdded}
-              className={`flex-1 h-9 px-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-                isAdded
+              className={`flex-1 h-9 px-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer ${isAdded
                   ? "bg-emerald-700 text-white"
                   : "bg-forest hover:bg-forest-deep text-ivory active:scale-95"
-              }`}
+                }`}
             >
               {isAdded ? (
                 <>

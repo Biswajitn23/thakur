@@ -264,11 +264,10 @@ export function SiteHeader({
                     <button
                       key={curr.code}
                       onClick={() => handleCurrencySelect(curr.symbol, curr.rate)}
-                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                        currencySymbol === curr.symbol
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${currencySymbol === curr.symbol
                           ? "bg-forest text-ivory"
                           : "text-forest hover:bg-gold/10"
-                      }`}
+                        }`}
                     >
                       <span>{curr.label}</span>
                     </button>

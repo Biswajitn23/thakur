@@ -614,7 +614,7 @@ function Navbar({ onSearchClick }: { onSearchClick: () => void }) {
                 </span>
                 <span className="text-[10px] text-forest/50 font-bold group-hover:text-gold transition">▼</span>
               </button>
- 
+
               {isProfileDropdownOpen && (
                 <>
                   <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-gold/30 bg-ivory shadow-2xl p-4 z-20 space-y-3.5 text-left backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
@@ -891,58 +891,40 @@ function Hero() {
 
         {/* RIGHT COLUMN: Featured 3 Product Bottles Standing on Table Surface */}
         <div className="relative z-10 lg:w-6/12 flex items-end justify-center lg:justify-end w-full pt-4 lg:pt-0">
-          <div className="relative flex items-end justify-center gap-2 sm:gap-4 max-w-xl">
+          <div className="relative flex items-end justify-center gap-3 sm:gap-5 lg:gap-6 max-w-2xl">
             {/* Drop Shadow Table Base */}
             <div className="absolute -bottom-3 left-0 right-0 h-6 bg-emerald-950/15 rounded-full blur-md" />
 
-            {/* Bottle 1: Papaya Deep Cleanse */}
-            <div className="relative z-10 w-28 sm:w-36 lg:w-44 transition-transform hover:-translate-y-2 duration-300">
-              <div className="bg-white/95 p-2.5 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center">
-                <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-full mb-1">
-                  Face Wash
-                </span>
+            {/* Bottle 1 */}
+            <div className="relative z-10 w-32 sm:w-44 lg:w-52 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-white/95 p-2 sm:p-3 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center justify-center">
                 <img
                   src={tyHairOil}
-                  alt="Papaya Deep Cleanse"
-                  className="w-full h-32 sm:h-44 object-contain drop-shadow-md"
+                  alt="Ayurvedic Formulation"
+                  className="w-full h-44 sm:h-60 lg:h-72 object-contain drop-shadow-md"
                 />
-                <span className="text-[10px] font-extrabold text-emerald-950 mt-1 line-clamp-1">
-                  Papaya Cleanse
-                </span>
               </div>
             </div>
 
-            {/* Bottle 2: Sun Shield (Featured Center Orange Bottle) */}
-            <div className="relative z-20 w-32 sm:w-40 lg:w-48 -mb-2 transition-transform hover:-translate-y-2 duration-300">
-              <div className="bg-gradient-to-b from-amber-50 to-amber-100 p-2.5 rounded-3xl border-2 border-amber-500/50 shadow-2xl backdrop-blur-xs flex flex-col items-center">
-                <span className="text-[9px] font-black uppercase bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full mb-1 shadow-sm">
-                  Sun Shield 50+ SPF
-                </span>
+            {/* Bottle 2 (Center Featured) */}
+            <div className="relative z-20 w-36 sm:w-48 lg:w-60 -mb-2 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-gradient-to-b from-amber-50 to-amber-100 p-2.5 sm:p-3.5 rounded-3xl border-2 border-amber-500/50 shadow-2xl backdrop-blur-xs flex flex-col items-center justify-center">
                 <img
                   src={tyPainOil}
-                  alt="Sun Shield Sandalwood"
-                  className="w-full h-36 sm:h-52 object-contain drop-shadow-lg scale-105"
+                  alt="Ayurvedic Formulation"
+                  className="w-full h-52 sm:h-72 lg:h-84 object-contain drop-shadow-lg scale-105"
                 />
-                <span className="text-[10px] font-black text-amber-950 mt-1 line-clamp-1">
-                  Sandalwood Sunscreen
-                </span>
               </div>
             </div>
 
-            {/* Bottle 3: Morning Nectar Moisturizer */}
-            <div className="relative z-10 w-28 sm:w-36 lg:w-44 transition-transform hover:-translate-y-2 duration-300">
-              <div className="bg-white/95 p-2.5 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center">
-                <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-full mb-1">
-                  Moisturizer
-                </span>
+            {/* Bottle 3 */}
+            <div className="relative z-10 w-32 sm:w-44 lg:w-52 transition-transform hover:-translate-y-2 duration-300">
+              <div className="bg-white/95 p-2 sm:p-3 rounded-3xl border border-emerald-950/20 shadow-xl backdrop-blur-xs flex flex-col items-center justify-center">
                 <img
                   src={tyHairOilDuo}
-                  alt="Morning Nectar"
-                  className="w-full h-32 sm:h-44 object-contain drop-shadow-md"
+                  alt="Ayurvedic Formulation"
+                  className="w-full h-44 sm:h-60 lg:h-72 object-contain drop-shadow-md"
                 />
-                <span className="text-[10px] font-extrabold text-emerald-950 mt-1 line-clamp-1">
-                  Morning Nectar
-                </span>
               </div>
             </div>
 
@@ -1237,8 +1219,8 @@ function ProductCard({ product }: { product: ProductItem }) {
           aria-label="Wishlist"
           onClick={() => toggleWishlist(product)}
           className={`absolute top-5 right-5 w-10 h-10 grid place-items-center rounded-full border transition cursor-pointer ${isWishlisted
-              ? "bg-[#cfa860] border-[#cfa860] text-ivory"
-              : "bg-ivory/95 border-gold/30 text-forest hover:bg-gold hover:text-ivory"
+            ? "bg-[#cfa860] border-[#cfa860] text-ivory"
+            : "bg-ivory/95 border-gold/30 text-forest hover:bg-gold hover:text-ivory"
             }`}
         >
           <HeartIcon fill={isWishlisted ? "currentColor" : "none"} />
@@ -1839,13 +1821,12 @@ Please confirm my order and share payment details/QR code.`;
                       </label>
 
                       <label
-                        className={`flex items-center gap-3 p-3.5 rounded-2xl border transition ${
-                          !storeSettings.isCodEnabled
+                        className={`flex items-center gap-3 p-3.5 rounded-2xl border transition ${!storeSettings.isCodEnabled
                             ? "opacity-50 border-gold/10 bg-forest/5 cursor-not-allowed"
                             : paymentMethod === "COD"
-                            ? "border-gold bg-gold/10 cursor-pointer"
-                            : "border-gold/20 hover:border-gold/50 cursor-pointer"
-                        }`}
+                              ? "border-gold bg-gold/10 cursor-pointer"
+                              : "border-gold/20 hover:border-gold/50 cursor-pointer"
+                          }`}
                       >
                         <input
                           type="radio"
@@ -2109,8 +2090,8 @@ function Spotlight() {
                 <div
                   key={tabName}
                   className={`col-start-1 row-start-1 w-full grid lg:grid-cols-12 gap-12 items-center transition-all duration-1000 ease-in-out ${isTabActive
-                      ? "opacity-100 translate-y-0 scale-100 z-10 pointer-events-auto"
-                      : "opacity-0 translate-y-8 scale-95 z-0 pointer-events-none"
+                    ? "opacity-100 translate-y-0 scale-100 z-10 pointer-events-auto"
+                    : "opacity-0 translate-y-8 scale-95 z-0 pointer-events-none"
                     }`}
                 >
                   {/* Left Info Column */}
@@ -3144,7 +3125,7 @@ function Footer() {
           // Sync local storage so we don't query Firestore again next time
           list.push(emailClean);
           localStorage.setItem("thakur_newsletter_subscribers", JSON.stringify(list));
-          
+
           toast.info("This email is already subscribed to our newsletter!");
           setSubscribeEmail("");
           return;
